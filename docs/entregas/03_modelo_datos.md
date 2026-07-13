@@ -4,6 +4,8 @@
 
 Este documento corresponde al archivo `docs/entregas/03_modelo_datos.md`.
 
+Tras el feedback recibido en la entrega anterior, el proyecto se acota definitivamente al sector de alojamientos de turismo rural y al ecosistema de microempresas locales vinculadas a esta demanda. Esta decisión permite trabajar con fuentes oficiales españolas y reduce el riesgo de entrenar modelos con datos no representativos del usuario final. Por tanto, esta entrega no desarrolla una solución genérica para cualquier microempresa rural, sino un modelo de datos específico para anticipar demanda turística rural y traducirla en indicadores operativos útiles para alojamientos, restauración, comercio local, actividades y entidades de apoyo territorial.
+
 Las entregas anteriores se mantienen en:
 
 ```text
@@ -86,11 +88,13 @@ Se utilizará una combinación de formatos, manteniendo cada uno en la fase dond
 | Capa | Formato principal | Formato auxiliar | Justificación |
 |---|---|---|---|
 | Raw | XLSX, CSV o JSON original descargado de la fuente | Metadatos en CSV/JSON | Conserva los datos tal como se obtienen, permite trazabilidad y auditoría |
-| Processed / Silver | Parquet | CSV opcional para inspección manual | Eficiente, tipado, reproducible y adecuado para series temporales tabulares |
+| Processed | Parquet | CSV opcional para inspección manual | Eficiente, tipado, reproducible y adecuado para series temporales tabulares |
 | Gold | Parquet | CSV exportado para entrega o revisión | Capa final limpia, rápida de leer desde Python, notebooks, DuckDB o dashboard |
 | Documentación | Markdown | YAML/JSON para metadatos técnicos | Fácil de versionar en Git y coherente con el repositorio del proyecto |
 
 La decisión principal es usar **Parquet como formato canónico para las capas processed y gold**, manteniendo una copia de exportación en CSV cuando sea útil para revisión académica o para mostrar el contenido sin herramientas adicionales.
+
+En este documento se utilizará el término **processed** para mantener la coherencia con el enunciado de la entrega. Cuando aparezca el prefijo técnico `silver_` en algunos ficheros, se entenderá como equivalente a la capa processed dentro de una arquitectura por capas. No implica una capa adicional distinta, sino una convención de nombrado para identificar datos limpios e intermedios antes de construir la capa gold.
 
 ## 2.2. Justificación técnica
 
@@ -160,11 +164,11 @@ project-root/
 │   │   ├── dataestur_empresas_turisticas/
 │   │   └── external_optional/
 │   ├── processed/
-│   │   ├── silver_ocupacion_rural_monthly.parquet
-│   │   ├── silver_precios_rurales_monthly.parquet
-│   │   ├── silver_etr_residentes.parquet
-│   │   ├── silver_egatur_monthly.parquet
-│   │   ├── silver_empresas_turisticas_annual.parquet
+│   │   ├── processed_ocupacion_rural_monthly.parquet
+│   │   ├── processed_precios_rurales_monthly.parquet
+│   │   ├── processed_etr_residentes.parquet
+│   │   ├── processed_egatur_monthly.parquet
+│   │   ├── processed_empresas_turisticas_annual.parquet
 │   │   ├── dim_calendar_month.parquet
 │   │   ├── dim_territory.parquet
 │   │   └── dim_business_activity_mapping.parquet
@@ -255,11 +259,11 @@ Datasets previstos:
 
 | Dataset processed | Descripción | Granularidad |
 |---|---|---|
-| `silver_ocupacion_rural_monthly.parquet` | Datos normalizados de ocupación rural | Territorio x mes x métrica/procedencia, o territorio x mes con métricas ya pivotadas según tabla |
-| `silver_precios_rurales_monthly.parquet` | Índice de precios rural normalizado | Territorio publicado x mes x modalidad/tarifa |
-| `silver_etr_residentes.parquet` | Turismo de residentes y gasto contextual | Destino publicado x periodo x categoría de gasto |
-| `silver_egatur_monthly.parquet` | Gasto turístico internacional normalizado | Destino publicado x mes x categoría o perfil agregado |
-| `silver_empresas_turisticas_annual.parquet` | Empresas activas asociadas al turismo | Territorio x año x actividad/subactividad |
+| `processed_ocupacion_rural_monthly.parquet` | Datos normalizados de ocupación rural | Territorio x mes x métrica/procedencia, o territorio x mes con métricas ya pivotadas según tabla |
+| `processed_precios_rurales_monthly.parquet` | Índice de precios rural normalizado | Territorio publicado x mes x modalidad/tarifa |
+| `processed_etr_residentes.parquet` | Turismo de residentes y gasto contextual | Destino publicado x periodo x categoría de gasto |
+| `processed_egatur_monthly.parquet` | Gasto turístico internacional normalizado | Destino publicado x mes x categoría o perfil agregado |
+| `processed_empresas_turisticas_annual.parquet` | Empresas activas asociadas al turismo | Territorio x año x actividad/subactividad |
 | `dim_calendar_month.parquet` | Dimensión temporal mensual | Mes |
 | `dim_territory.parquet` | Catálogo normalizado de territorios | Territorio |
 | `dim_business_activity_mapping.parquet` | Mapeo entre actividades oficiales y tipos de negocio del proyecto | Actividad oficial x tipo de negocio normalizado |
@@ -338,6 +342,17 @@ La capa gold se define como el contrato de datos del proyecto. Sus principios se
 | `gold_modeling_dataset_monthly.parquet` | Dataset preparado para predecir pernoctaciones u ocupación con variables temporales y lags | Una fila por `territory_id` x `target_month_id` | Similar al anterior, descontando meses sin histórico suficiente | `territory_id`, `target_month_id`, `forecast_horizon` | Modelos, validación temporal, backtesting |
 | `gold_business_context_annual.parquet` | Tabla anual del tejido empresarial turístico por territorio y actividad | Una fila por `territory_id` x `year` x `business_activity_group` | 500-10.000 registros | `territory_id`, `year`, `business_activity_group` | Ratios de demanda/empresas, contexto empresarial |
 | `gold_business_opportunity_monthly.parquet` | Indicadores e inputs de recomendación por territorio, mes y tipo de negocio | Una fila por `territory_id` x `month_id` x `business_type` | 50.000-500.000 registros según categorías | `territory_id`, `month_id`, `business_type` | Dashboard, recomendaciones, informe final |
+
+Para asegurar la viabilidad durante el curso, la capa gold se priorizará en dos niveles:
+
+| Nivel | Dataset | Prioridad | Motivo |
+|---|---|---|---|
+| Núcleo obligatorio | `gold_tourism_demand_monthly.parquet` | Alta | Contiene la demanda turística rural mensual y permite análisis, dashboard y segmentación. |
+| Núcleo obligatorio | `gold_modeling_dataset_monthly.parquet` | Alta | Permite entrenar y validar el modelo predictivo de pernoctaciones u ocupación. |
+| Ampliación deseable | `gold_business_context_annual.parquet` | Media | Enriquece el análisis con tejido empresarial turístico, pero no es imprescindible para predecir demanda. |
+| Ampliación deseable | `gold_business_opportunity_monthly.parquet` | Media | Traduce la demanda en recomendaciones por tipo de negocio; puede simplificarse si las fuentes complementarias no encajan. |
+
+De esta forma, el proyecto mantiene una versión mínima viable aunque las fuentes complementarias de gasto o empresas no puedan integrarse con la calidad suficiente.
 
 ## 4.3. Dataset `gold_tourism_demand_monthly.parquet`
 
@@ -1607,3 +1622,21 @@ Al finalizar esta entrega, el repositorio debe permitir entender:
 - cómo se simplificaría el modelo si el alcance completo no fuera viable.
 
 El modelo de datos queda definido con una capa gold principal basada en demanda turística rural mensual y con datasets complementarios para modelado, contexto empresarial y recomendaciones. Esta estructura mantiene la línea del proyecto: una prueba de concepto profesional, reproducible y prudente, orientada a convertir datos oficiales españoles en información útil para la toma de decisiones de alojamientos y microempresas rurales.
+
+## 10.1. Criterio de cierre de la entrega
+
+La entrega 3 se considera cerrada cuando el repositorio permite identificar de forma clara:
+
+- la ruta de los documentos incrementales dentro de `docs/entregas/`;
+- las fuentes oficiales españolas que alimentarán el proyecto;
+- el formato previsto de almacenamiento en cada capa;
+- la diferencia entre datos raw, processed y gold;
+- la tabla gold principal y los datasets gold complementarios;
+- la granularidad exacta de cada dataset;
+- las claves de relación entre tiempo, territorio, demanda, contexto empresarial y recomendaciones;
+- el diccionario inicial de campos;
+- los problemas de calidad esperados;
+- las transformaciones iniciales previstas;
+- los riesgos del modelo de datos y la alternativa simplificada.
+
+Con estos elementos, el modelo de datos queda preparado para las siguientes fases: de
