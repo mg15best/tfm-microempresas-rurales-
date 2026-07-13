@@ -166,7 +166,8 @@ project-root/
 │   │   ├── silver_egatur_monthly.parquet
 │   │   ├── silver_empresas_turisticas_annual.parquet
 │   │   ├── dim_calendar_month.parquet
-│   │   └── dim_territory.parquet
+│   │   ├── dim_territory.parquet
+│   │   └── dim_business_activity_mapping.parquet
 │   ├── gold/
 │   │   ├── gold_tourism_demand_monthly.parquet
 │   │   ├── gold_modeling_dataset_monthly.parquet
@@ -177,7 +178,8 @@ project-root/
 │       ├── data_sources.yml
 │       ├── download_log.csv
 │       ├── data_quality_report.md
-│       └── schema_gold.yml
+│       ├── schema_gold.yml
+│       └── validation_rules.yml
 ├── docs/
 │   └── entregas/
 │       ├── 01_ideas_producto.md
@@ -260,6 +262,7 @@ Datasets previstos:
 | `silver_empresas_turisticas_annual.parquet` | Empresas activas asociadas al turismo | Territorio x año x actividad/subactividad |
 | `dim_calendar_month.parquet` | Dimensión temporal mensual | Mes |
 | `dim_territory.parquet` | Catálogo normalizado de territorios | Territorio |
+| `dim_business_activity_mapping.parquet` | Mapeo entre actividades oficiales y tipos de negocio del proyecto | Actividad oficial x tipo de negocio normalizado |
 
 La capa processed todavía no será el contrato final para el modelado. Podrá tener tablas separadas por fuente y granularidades distintas. Su función será servir de base controlada para la construcción de la capa gold.
 
@@ -282,7 +285,7 @@ Además, se mantendrán dimensiones auxiliares en gold o processed según conven
 |---|---|
 | `dim_territory.parquet` | Homogeneizar nombres, códigos y niveles territoriales |
 | `dim_calendar_month.parquet` | Gestionar año, mes, trimestre, temporada, festivos y periodos especiales |
-| `dim_business_activity.parquet` | Agrupar actividades económicas en categorías interpretables para recomendaciones |
+| `dim_business_activity_mapping.parquet` | Relacionar códigos o categorías oficiales de actividad con `business_activity_group` y `business_type` |
 
 ## 3.5. Flujo completo de datos
 
@@ -319,12 +322,13 @@ Esta estructura evita trabajar con ficheros sueltos o transformaciones improvisa
 La capa gold se define como el contrato de datos del proyecto. Sus principios serán:
 
 1. **Una fila debe tener una interpretación inequívoca.** La tabla principal tendrá una fila por territorio y mes.
-2. **No se mezclarán granularidades sin indicarlo.** Cualquier dato anual o trimestral incorporado a una tabla mensual llevará campos de control como `source_frequency` o `context_data_flag`.
+2. **No se mezclarán granularidades sin indicarlo.** Cualquier dato anual, trimestral o territorialmente más agregado incorporado a una tabla mensual llevará campos de control específicos por fuente, como `demand_source_frequency`, `price_source_frequency`, `spend_context_frequency`, `business_context_frequency`, `price_territory_level`, `spend_context_territory_level` o `business_context_territory_level`.
 3. **No se fingirá precisión territorial.** Si una variable solo está disponible por comunidad autónoma, no se presentará como dato propio de una provincia o municipio.
 4. **No se duplicarán totales.** Las filas de España, comunidad autónoma, provincia, zona turística y punto turístico se tratarán como niveles alternativos, no como elementos sumables entre sí.
 5. **El dataset de modelado evitará fuga de información.** Las variables predictoras deberán estar disponibles antes del periodo predicho o construirse con lags históricos.
 6. **Las variables de oportunidad serán índices o escenarios, no beneficios previstos.** No se calculará facturación ni beneficio neto de negocios concretos.
 7. **Todas las transformaciones serán trazables.** Cada dataset gold deberá poder regenerarse desde raw y processed mediante scripts documentados.
+8. **Cada ejecución tendrá versión de datos.** Las tablas gold incorporarán `source_snapshot_id`, `pipeline_run_id` o `data_version` para saber con qué descarga y ejecución se generó cada registro o dataset.
 
 ## 4.2. Resumen de datasets gold
 
@@ -389,30 +393,41 @@ territory_id + month_id
 | `overnight_stays_domestic` | int64 nullable | Pernoctaciones de residentes en España | Ocupación rural | Deseable |
 | `overnight_stays_foreign` | int64 nullable | Pernoctaciones de residentes en el extranjero | Ocupación rural | Deseable |
 | `average_stay` | float64 | Estancia media | Ocupación rural | Sí |
-| `establishments_estimated` | int64 nullable | Establecimientos abiertos estimados | Ocupación rural | Sí |
-| `places_estimated` | int64 nullable | Plazas estimadas | Ocupación rural | Sí |
+| `establishments_estimated` | float64 nullable | Establecimientos abiertos estimados | Ocupación rural | Sí |
+| `places_estimated` | float64 nullable | Plazas estimadas | Ocupación rural | Sí |
 | `occupancy_rate_pct` | float64 | Grado de ocupación por plazas, escala 0-100 | Ocupación rural | Sí |
 | `weekend_occupancy_rate_pct` | float64 | Grado de ocupación por plazas en fin de semana, escala 0-100 | Ocupación rural | Sí |
 | `room_occupancy_rate_pct` | float64 | Grado de ocupación por habitaciones, si existe | Ocupación rural | Deseable |
-| `staff_employed` | int64 nullable | Personal ocupado | Ocupación rural | Deseable |
+| `staff_employed` | float64 nullable | Personal ocupado | Ocupación rural | Deseable |
 | `price_index` | float64 nullable | Índice de precios de alojamientos rurales | INE precios | Deseable |
 | `price_yoy_change_pct` | float64 nullable | Variación interanual del índice de precios | INE precios / derivado | Deseable |
-| `domestic_share` | float64 nullable | Peso de la demanda nacional sobre viajeros o pernoctaciones | Derivado | Deseable |
-| `foreign_share` | float64 nullable | Peso de la demanda extranjera | Derivado | Deseable |
+| `domestic_travellers_share` | float64 nullable | Peso de viajeros residentes en España sobre viajeros totales, escala 0-1 | Derivado | Deseable |
+| `foreign_travellers_share` | float64 nullable | Peso de viajeros extranjeros sobre viajeros totales, escala 0-1 | Derivado | Deseable |
+| `domestic_overnight_stays_share` | float64 nullable | Peso de pernoctaciones de residentes en España sobre pernoctaciones totales, escala 0-1 | Derivado | Deseable |
+| `foreign_overnight_stays_share` | float64 nullable | Peso de pernoctaciones de extranjeros sobre pernoctaciones totales, escala 0-1 | Derivado | Deseable |
 | `overnight_stays_per_place` | float64 nullable | Pernoctaciones por plaza estimada | Derivado | Deseable |
 | `travellers_per_establishment` | float64 nullable | Viajeros por establecimiento estimado | Derivado | Deseable |
 | `tourism_pressure_index` | float64 nullable | Índice 0-100 de presión turística relativa | Derivado | Deseable |
 | `seasonality_index` | float64 nullable | Índice de estacionalidad territorial | Derivado | Deseable |
-| `covid_period` | bool | Indicador de meses afectados por COVID-19 | Derivado | Sí |
+| `covid_period` | bool | Indicador de meses afectados por COVID-19; regla inicial: `true` entre 2020-03 y 2021-12 | Derivado | Sí |
 | `data_status` | string | Definitivo, provisional o desconocido | Fuente/metadatos | Deseable |
-| `source_frequency` | string | Mensual, trimestral, anual o mixto para variables contextuales | Derivado | Sí |
+| `demand_source_frequency` | string | Frecuencia de la fuente principal de ocupación, normalmente mensual | Derivado | Sí |
+| `price_source_frequency` | string nullable | Frecuencia del índice de precios incorporado | Derivado | Deseable |
+| `price_territory_level` | string nullable | Nivel territorial real del dato de precios | Derivado | Deseable |
+| `spend_context_frequency` | string nullable | Frecuencia del dato de gasto usado como contexto | Derivado | Opcional |
+| `spend_context_territory_level` | string nullable | Nivel territorial real del dato de gasto contextual | Derivado | Opcional |
+| `business_context_frequency` | string nullable | Frecuencia del dato empresarial usado como contexto, normalmente anual | Derivado | Opcional |
+| `business_context_territory_level` | string nullable | Nivel territorial real del dato empresarial contextual | Derivado | Opcional |
+| `source_snapshot_id` | string | Identificador de la descarga o conjunto raw utilizado | Metadatos | Sí |
+| `pipeline_run_id` | string | Identificador de la ejecución del pipeline que genera el dataset | Pipeline | Sí |
+| `data_version` | string | Versión lógica del dataset gold | Pipeline | Sí |
 | `created_at` | datetime | Fecha de generación del dataset gold | Pipeline | Sí |
 
 ### Variables especialmente relevantes
 
 - Variable objetivo principal candidata: `overnight_stays_total`.
 - Variable objetivo secundaria candidata: `occupancy_rate_pct`.
-- Variables descriptivas clave: `travellers_total`, `average_stay`, `places_estimated`, `weekend_occupancy_rate_pct`, `domestic_share`, `foreign_share`.
+- Variables descriptivas clave: `travellers_total`, `average_stay`, `places_estimated`, `weekend_occupancy_rate_pct`, `domestic_travellers_share`, `foreign_travellers_share`, `domestic_overnight_stays_share`, `foreign_overnight_stays_share`.
 - Variables para indicadores de oportunidad: `tourism_pressure_index`, `seasonality_index`, `overnight_stays_per_place`, `price_index`.
 
 ### Uso posterior
@@ -480,17 +495,22 @@ territory_id + target_month_id + forecast_horizon
 | `lag_1_average_stay` | float64 nullable | Estancia media del mes anterior | Feature temporal |
 | `lag_12_average_stay` | float64 nullable | Estancia media del mismo mes año anterior | Feature estacional |
 | `price_index_lag_1` | float64 nullable | Índice de precios del mes anterior o último disponible | Feature contextual |
-| `domestic_share_lag_1` | float64 nullable | Peso nacional del mes anterior | Feature demanda |
-| `foreign_share_lag_1` | float64 nullable | Peso extranjero del mes anterior | Feature demanda |
+| `domestic_travellers_share_lag_1` | float64 nullable | Peso de viajeros nacionales del mes anterior | Feature demanda |
+| `foreign_travellers_share_lag_1` | float64 nullable | Peso de viajeros extranjeros del mes anterior | Feature demanda |
+| `domestic_overnight_stays_share_lag_1` | float64 nullable | Peso de pernoctaciones nacionales del mes anterior | Feature demanda |
+| `foreign_overnight_stays_share_lag_1` | float64 nullable | Peso de pernoctaciones extranjeras del mes anterior | Feature demanda |
 | `business_density_annual` | float64 nullable | Densidad empresarial anual aplicable al territorio | Feature contextual |
 | `train_validation_split` | string | Train, validation, test o backtest_fold | Control de evaluación |
 | `data_quality_flag` | string | OK, missing_target, insufficient_history, outlier_review | Control de calidad |
+| `source_snapshot_id` | string | Identificador de descarga utilizada | Trazabilidad |
+| `pipeline_run_id` | string | Identificador de ejecución del pipeline | Trazabilidad |
+| `data_version` | string | Versión lógica del dataset gold | Trazabilidad |
 
 ### Variables especialmente relevantes
 
 - Objetivo principal: `target_overnight_stays_total`.
 - Baseline principal: `lag_12_overnight_stays`.
-- Features clave: `month`, `lag_1_overnight_stays`, `lag_12_overnight_stays`, `rolling_mean_12m_overnight_stays`, `price_index_lag_1`, `domestic_share_lag_1`, `covid_period`.
+- Features clave: `month`, `lag_1_overnight_stays`, `lag_12_overnight_stays`, `rolling_mean_12m_overnight_stays`, `price_index_lag_1`, `domestic_travellers_share_lag_1`, `domestic_overnight_stays_share_lag_1`, `covid_period`.
 
 ### Uso posterior
 
@@ -539,11 +559,15 @@ territory_id + year + business_activity_group
 | `business_activity_group` | string | Grupo interpretativo: alojamiento, restauración, transporte, actividades, cultura, agencias, otros | Derivado | Sí |
 | `source_activity_code` | string | Código CNAE o categoría original si está disponible | Fuente | Deseable |
 | `source_activity_name` | string | Nombre original de la actividad | Fuente | Sí |
+| `mapping_confidence` | string | Confianza del mapeo entre actividad oficial y grupo interpretativo | Derivado | Deseable |
 | `active_companies` | int64 nullable | Empresas activas | Empresas turísticas | Sí |
 | `local_units` | int64 nullable | Unidades locales, si existe | Empresas turísticas | Deseable |
 | `business_density_per_1000_stays` | float64 nullable | Empresas por cada 1.000 pernoctaciones anuales | Derivado | Deseable |
 | `overnight_stays_per_business` | float64 nullable | Pernoctaciones anuales por empresa activa | Derivado | Deseable |
 | `data_status` | string | Estado del dato | Fuente/metadatos | Deseable |
+| `source_snapshot_id` | string | Identificador de descarga utilizada | Metadatos | Sí |
+| `pipeline_run_id` | string | Identificador de ejecución del pipeline | Pipeline | Sí |
+| `data_version` | string | Versión lógica del dataset gold | Pipeline | Sí |
 | `created_at` | datetime | Fecha de generación | Pipeline | Sí |
 
 ### Uso posterior
@@ -599,6 +623,7 @@ territory_id + month_id + business_type
 | `territory_id` | string | Identificador del territorio | Derivado | Sí |
 | `month_id` | string | Mes | Derivado | Sí |
 | `business_type` | string | Tipo de negocio o entidad | Derivado | Sí |
+| `business_activity_group` | string nullable | Grupo de actividad empresarial asociado, cuando exista correspondencia | Derivado | Deseable |
 | `expected_demand_level` | string | Baja, media, alta o muy alta | Derivado | Sí |
 | `tourism_pressure_index` | float64 | Índice de presión turística 0-100 | Derivado | Sí |
 | `business_opportunity_index` | float64 | Índice de oportunidad 0-100 por tipo de negocio | Derivado | Sí |
@@ -614,6 +639,9 @@ territory_id + month_id + business_type
 | `recommendation_text` | string | Recomendación explicable generada por reglas | Derivado | Sí |
 | `recommendation_rationale` | string | Variables que justifican la recomendación | Derivado | Sí |
 | `confidence_level` | string | Alta, media o baja según calidad e incertidumbre | Derivado | Sí |
+| `source_snapshot_id` | string | Identificador de descarga utilizada | Metadatos | Sí |
+| `pipeline_run_id` | string | Identificador de ejecución del pipeline | Pipeline | Sí |
+| `data_version` | string | Versión lógica del dataset gold | Pipeline | Sí |
 | `created_at` | datetime | Fecha de generación | Pipeline | Sí |
 
 ### Ejemplos de reglas explicables
@@ -661,7 +689,42 @@ Tabla auxiliar para homogeneizar territorios entre fuentes. Es fundamental porqu
 | `last_available_month` | string nullable | Último mes disponible en la fuente principal |
 | `coverage_quality` | string | Alta, media, baja o insuficiente |
 
-## 4.8. Dimensión `dim_calendar_month.parquet`
+## 4.8. Dimensión `dim_business_activity_mapping.parquet`
+
+### Descripción funcional
+
+Tabla auxiliar para conectar las actividades oficiales de la fuente de empresas turísticas con los tipos de negocio utilizados en el dashboard y en las recomendaciones. Esta tabla evita una relación ambigua entre categorías estadísticas y recomendaciones operativas.
+
+No todas las actividades oficiales se corresponden de forma perfecta con un único tipo de negocio. Por eso el mapeo será explícito, conservador y auditable.
+
+### Granularidad
+
+> Una fila por **actividad oficial x grupo normalizado x tipo de negocio**, aplicando una regla principal de asignación para el MVP.
+
+### Campos previstos
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `source_activity_code` | string nullable | Código CNAE o código original de la actividad, si está disponible |
+| `source_activity_name` | string | Nombre original de la actividad en la fuente |
+| `business_activity_group` | string | Grupo empresarial normalizado: accommodation, food_and_beverage, transport, activities, culture, agencies, other |
+| `business_type` | string | Tipo de negocio usado en recomendaciones: restaurants, local_food_retail, activities_experiences, etc. |
+| `is_primary_mapping` | bool | Indica si es la asignación principal utilizada para evitar doble conteo |
+| `mapping_confidence` | string | Alta, media o baja según claridad de la correspondencia |
+| `mapping_rule` | string | Regla aplicada para justificar la asignación |
+| `valid_from_year` | int16 nullable | Año inicial de validez si hay cambios de clasificación |
+| `valid_to_year` | int16 nullable | Año final de validez si hay cambios de clasificación |
+
+### Uso posterior
+
+Esta dimensión se usará para:
+
+- agrupar empresas activas en categorías interpretables;
+- construir `gold_business_context_annual.parquet`;
+- vincular densidad empresarial con `business_type` sin duplicar empresas;
+- explicar las recomendaciones cuando una oportunidad se asocia a restauración, actividades, comercio local u otros servicios.
+
+## 4.9. Dimensión `dim_calendar_month.parquet`
 
 ### Descripción funcional
 
@@ -706,12 +769,28 @@ El modelo de datos se puede entender como una estructura tipo estrella, con una 
       │ 1:N                          │ 1:N
       ▼                              ▼
 gold_business_context_annual    gold_business_opportunity_monthly
+      ▲                              ▲
+      │ N:1                          │ N:1
+      └──────── dim_business_activity_mapping ────────┘
                                       │
                                       ▼
                               dashboard / recomendaciones
 ```
 
 La tabla `gold_modeling_dataset_monthly` se construye a partir de `gold_tourism_demand_monthly`, pero con lags y variables preparadas específicamente para predicción.
+
+Además, el modelo puede representarse de forma simplificada como:
+
+```mermaid
+erDiagram
+    DIM_TERRITORY ||--o{ GOLD_TOURISM_DEMAND_MONTHLY : has
+    DIM_CALENDAR_MONTH ||--o{ GOLD_TOURISM_DEMAND_MONTHLY : has
+    GOLD_TOURISM_DEMAND_MONTHLY ||--o{ GOLD_MODELING_DATASET_MONTHLY : generates
+    GOLD_TOURISM_DEMAND_MONTHLY ||--o{ GOLD_BUSINESS_OPPORTUNITY_MONTHLY : generates
+    GOLD_BUSINESS_CONTEXT_ANNUAL ||--o{ GOLD_BUSINESS_OPPORTUNITY_MONTHLY : contextualizes
+    DIM_BUSINESS_ACTIVITY_MAPPING ||--o{ GOLD_BUSINESS_CONTEXT_ANNUAL : maps
+    DIM_BUSINESS_ACTIVITY_MAPPING ||--o{ GOLD_BUSINESS_OPPORTUNITY_MONTHLY : maps
+```
 
 ## 5.2. Relaciones principales
 
@@ -722,6 +801,8 @@ La tabla `gold_modeling_dataset_monthly` se construye a partir de `gold_tourism_
 | `gold_tourism_demand_monthly` -> `gold_modeling_dataset_monthly` | `territory_id`, `month_id` desplazado por lags | 1:N lógica | Crear dataset supervisado con históricos |
 | `gold_tourism_demand_monthly` -> `gold_business_opportunity_monthly` | `territory_id`, `month_id` | 1:N | Generar una fila por tipo de negocio |
 | `gold_business_context_annual` -> `gold_business_opportunity_monthly` | `territory_id`, `year`, `business_activity_group` | 1:N | Añadir densidad empresarial anual al indicador mensual |
+| `dim_business_activity_mapping` -> `gold_business_context_annual` | `source_activity_code`, `source_activity_name` | 1:N | Normalizar actividades oficiales en grupos de actividad |
+| `dim_business_activity_mapping` -> `gold_business_opportunity_monthly` | `business_type`, `business_activity_group` | 1:N | Vincular grupos empresariales con recomendaciones por tipo de negocio |
 | Índice de precios -> `gold_tourism_demand_monthly` | `autonomous_community_id`, `month_id` o `territory_id`, `month_id` según nivel | 1:N o 1:1 | Añadir contexto de precios compatible |
 | EGATUR -> `gold_tourism_demand_monthly` | `autonomous_community_id`, `month_id` cuando sea compatible | 1:N | Contextualizar demanda extranjera |
 | Turismo residentes -> `gold_tourism_demand_monthly` | `territory_id` o destino compatible + trimestre/año | 1:N | Contextualizar gasto residente, sin precisión mensual artificial |
@@ -741,14 +822,14 @@ La clave temporal principal será `month_id`, en formato `YYYY-MM`. Para fuentes
 Cuando una fuente trimestral se incorpore a una tabla mensual, no se tratará como observación mensual real. Se marcará con campos como:
 
 ```text
-context_source_frequency = quarterly
+spend_context_frequency = quarterly
 context_temporal_assignment = repeated_within_quarter
 ```
 
 Cuando una fuente anual se incorpore a una tabla mensual, se marcará con:
 
 ```text
-context_source_frequency = annual
+business_context_frequency = annual
 context_temporal_assignment = repeated_within_year
 ```
 
@@ -813,7 +894,7 @@ Para resolverlas se usarán tablas puente cuando sea necesario:
 
 ```text
 bridge_territory_hierarchy
-bridge_business_activity_mapping
+dim_business_activity_mapping
 ```
 
 Ejemplo:
@@ -831,7 +912,7 @@ Se transformará en una relación controlada mediante una tabla de correspondenc
 | Ocupación rural + calendario | Join por `month_id` | Bajo | Validar que todos los meses existen en calendario |
 | Ocupación rural + territorio | Join por `territory_id` | Nombres/códigos inconsistentes | Tabla `dim_territory` y validación de no emparejados |
 | Ocupación rural + precios | Join por CCAA/mes o territorio/mes | Asignar datos autonómicos a provincias | Campo `price_territory_level` y uso contextual |
-| Ocupación rural + empresas | Join por territorio/año | Repetición anual en meses | Campo `business_source_frequency = annual` |
+| Ocupación rural + empresas | Join por territorio/año | Repetición anual en meses | Campo `business_context_frequency = annual` |
 | Ocupación rural + gasto residentes | Join por destino compatible y trimestre/año | Falsa precisión mensual o rural | Usar solo como ponderación contextual |
 | Ocupación rural + EGATUR | Join por destino compatible y mes | Destino principal no equivalente a turismo rural | Usar solo para contexto de demanda extranjera |
 | Métricas mensuales a anuales | Agrupación por territorio/año | Mezclar niveles territoriales | Agrupar solo dentro del mismo `territory_level` |
@@ -888,8 +969,10 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `overnight_stays_domestic` | Pernoctaciones de residentes en España | int64 nullable | Ocupación rural | Deseable | Útil para perfil de demanda |
 | `overnight_stays_foreign` | Pernoctaciones de residentes en el extranjero | int64 nullable | Ocupación rural | Deseable | Útil para perfil de demanda |
 | `average_stay` | Estancia media | float64 nullable | Ocupación rural | Sí | Relación entre pernoctaciones y viajeros |
-| `domestic_share` | Peso de demanda nacional | float64 nullable | Derivado | Deseable | Valor 0-1; se calculará sobre viajeros o pernoctaciones según disponibilidad |
-| `foreign_share` | Peso de demanda extranjera | float64 nullable | Derivado | Deseable | Valor 0-1 |
+| `domestic_travellers_share` | Peso de viajeros nacionales | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `travellers_total` |
+| `foreign_travellers_share` | Peso de viajeros extranjeros | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `travellers_total` |
+| `domestic_overnight_stays_share` | Peso de pernoctaciones nacionales | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `overnight_stays_total` |
+| `foreign_overnight_stays_share` | Peso de pernoctaciones extranjeras | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `overnight_stays_total` |
 | `year_on_year_change` | Variación interanual de la demanda | float64 nullable | Derivado | Deseable | Calculada por territorio y mes |
 | `month_on_month_change` | Variación respecto al mes anterior | float64 nullable | Derivado | Deseable | Puede ser muy volátil en territorios pequeños |
 
@@ -897,12 +980,12 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 
 | Campo | Descripción | Tipo de dato | Fuente | Obligatorio | Observaciones |
 |---|---|---|---|---|---|
-| `establishments_estimated` | Establecimientos abiertos estimados | int64 nullable | Ocupación rural | Sí | Capacidad empresarial del alojamiento rural |
-| `places_estimated` | Plazas estimadas | int64 nullable | Ocupación rural | Sí | Base para ratios de presión |
+| `establishments_estimated` | Establecimientos abiertos estimados | float64 nullable | Ocupación rural | Sí | Magnitud estimada; se conservará como decimal si la fuente lo publica así |
+| `places_estimated` | Plazas estimadas | float64 nullable | Ocupación rural | Sí | Magnitud estimada; base para ratios de presión |
 | `occupancy_rate_pct` | Grado de ocupación por plazas | float64 nullable | Ocupación rural | Sí | Porcentaje 0-100 |
 | `weekend_occupancy_rate_pct` | Grado de ocupación por plazas en fin de semana | float64 nullable | Ocupación rural | Sí | Clave para recomendaciones de fines de semana |
 | `room_occupancy_rate_pct` | Grado de ocupación por habitaciones | float64 nullable | Ocupación rural | Deseable | Puede no estar siempre disponible |
-| `staff_employed` | Personal ocupado | int64 nullable | Ocupación rural | Deseable | Aproximación a necesidades operativas |
+| `staff_employed` | Personal ocupado | float64 nullable | Ocupación rural | Deseable | Magnitud estimada; aproximación a necesidades operativas |
 | `overnight_stays_per_place` | Pernoctaciones por plaza estimada | float64 nullable | Derivado | Deseable | Indicador de presión de demanda |
 | `travellers_per_establishment` | Viajeros por establecimiento | float64 nullable | Derivado | Deseable | Indicador de intensidad respecto a alojamientos |
 | `weekend_dependence_index` | Diferencia relativa entre ocupación fin de semana y ocupación mensual | float64 nullable | Derivado | Deseable | Útil para restaurantes y actividades |
@@ -911,16 +994,26 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 
 | Campo | Descripción | Tipo de dato | Fuente | Obligatorio | Observaciones |
 |---|---|---|---|---|---|
+| `demand_source_frequency` | Frecuencia del dato de demanda | string | Derivado | Sí | Normalmente mensual |
 | `price_index` | Índice de precios de alojamientos rurales | float64 nullable | INE precios | Deseable | No equivale a precio real en euros |
 | `price_yoy_change_pct` | Variación interanual del índice de precios | float64 nullable | INE precios/derivado | Deseable | Contexto de presión de precios |
+| `price_source_frequency` | Frecuencia del dato de precios | string nullable | Derivado | Deseable | Normalmente mensual |
 | `price_territory_level` | Nivel territorial del precio incorporado | string nullable | Derivado | Deseable | Evita presentar dato autonómico como provincial |
 | `resident_avg_spend_context` | Gasto medio contextual de residentes | float64 nullable | Turismo residentes | Opcional | Solo como escenario, no gasto local real |
 | `foreign_avg_spend_context` | Gasto medio contextual de extranjeros | float64 nullable | EGATUR | Opcional | Solo si la granularidad es compatible |
 | `spend_context_frequency` | Frecuencia del dato de gasto | string nullable | Derivado | Opcional | Mensual, trimestral o anual |
+| `spend_context_territory_level` | Nivel territorial real del gasto contextual | string nullable | Derivado | Opcional | Evita atribuir gasto autonómico a una provincia como dato propio |
+| `business_context_frequency` | Frecuencia del dato empresarial | string nullable | Derivado | Opcional | Normalmente anual |
+| `business_context_territory_level` | Nivel territorial real del contexto empresarial | string nullable | Derivado | Opcional | Provincia, comunidad u otro nivel publicado |
 | `active_companies` | Empresas activas turísticas | int64 nullable | Empresas turísticas | Deseable | En dataset anual o mensualizado como contexto |
 | `local_units` | Unidades locales turísticas | int64 nullable | Empresas turísticas | Deseable | Si la fuente lo publica |
 | `business_activity_group` | Grupo de actividad turística | string nullable | Derivado | Deseable | Alojamiento, restauración, transporte, actividades, etc. |
+| `business_type` | Tipo de negocio usado en recomendaciones | string nullable | Derivado | Deseable | Derivado mediante `dim_business_activity_mapping` |
+| `mapping_confidence` | Confianza del mapeo actividad-negocio | string nullable | Derivado | Deseable | Alta, media o baja |
 | `overnight_stays_per_tourism_business` | Pernoctaciones por empresa turística | float64 nullable | Derivado | Deseable | Ratio de oportunidad relativa |
+| `source_snapshot_id` | Identificador de la descarga utilizada | string | Metadatos | Sí | Trazabilidad del origen |
+| `pipeline_run_id` | Identificador de la ejecución del pipeline | string | Pipeline | Sí | Trazabilidad de transformación |
+| `data_version` | Versión lógica del dataset | string | Pipeline | Sí | Control de reproducibilidad |
 
 ## 6.5. Variables de modelado
 
@@ -937,14 +1030,22 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `rolling_mean_12m_overnight_stays` | Media móvil de 12 meses anteriores | float64 nullable | Derivado | Deseable | Captura nivel anual |
 | `lag_1_occupancy_rate_pct` | Ocupación del mes anterior | float64 nullable | Derivado | Deseable | Predictor de presión previa |
 | `lag_12_occupancy_rate_pct` | Ocupación del mismo mes del año anterior | float64 nullable | Derivado | Deseable | Predictor estacional |
+| `domestic_travellers_share_lag_1` | Peso de viajeros nacionales del mes anterior | float64 nullable | Derivado | Deseable | Predictor de procedencia |
+| `foreign_travellers_share_lag_1` | Peso de viajeros extranjeros del mes anterior | float64 nullable | Derivado | Deseable | Predictor de procedencia |
+| `domestic_overnight_stays_share_lag_1` | Peso de pernoctaciones nacionales del mes anterior | float64 nullable | Derivado | Deseable | Predictor de procedencia |
+| `foreign_overnight_stays_share_lag_1` | Peso de pernoctaciones extranjeras del mes anterior | float64 nullable | Derivado | Deseable | Predictor de procedencia |
 | `train_validation_split` | Partición temporal | string | Derivado | Sí | Train, validation, test o fold |
 | `data_quality_flag` | Estado de calidad de la fila | string | Derivado | Sí | OK, missing_target, outlier_review, insufficient_history |
+| `source_snapshot_id` | Identificador de la descarga utilizada | string | Metadatos | Sí | Trazabilidad del origen |
+| `pipeline_run_id` | Identificador de la ejecución del pipeline | string | Pipeline | Sí | Trazabilidad de transformación |
+| `data_version` | Versión lógica del dataset | string | Pipeline | Sí | Control de reproducibilidad |
 
 ## 6.6. Variables de oportunidad y recomendaciones
 
 | Campo | Descripción | Tipo de dato | Fuente | Obligatorio | Observaciones |
 |---|---|---|---|---|---|
 | `business_type` | Tipo de negocio destinatario | string | Derivado | Sí | Restauración, alojamiento, actividades, etc. |
+| `business_activity_group` | Grupo de actividad asociado | string nullable | Derivado | Deseable | Vinculado mediante `dim_business_activity_mapping` |
 | `tourism_pressure_index` | Índice de presión turística | float64 nullable | Derivado | Sí | Escala 0-100 |
 | `business_opportunity_index` | Índice de oportunidad por tipo de negocio | float64 nullable | Derivado | Sí | Escala 0-100 |
 | `expected_demand_level` | Nivel de demanda esperada | string | Derivado | Sí | Baja, media, alta, muy alta |
@@ -954,6 +1055,9 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `forecast_value` | Valor previsto por el modelo | float64 nullable | Modelo | Deseable | Si el modelo ya se ha ejecutado |
 | `forecast_interval_lower` | Límite inferior del intervalo | float64 nullable | Modelo | Deseable | Para escenarios conservadores |
 | `forecast_interval_upper` | Límite superior del intervalo | float64 nullable | Modelo | Deseable | Para escenarios favorables |
+| `source_snapshot_id` | Identificador de la descarga utilizada | string | Metadatos | Sí | Trazabilidad del origen |
+| `pipeline_run_id` | Identificador de la ejecución del pipeline | string | Pipeline | Sí | Trazabilidad de transformación |
+| `data_version` | Versión lógica del dataset | string | Pipeline | Sí | Control de reproducibilidad |
 
 ---
 
@@ -1140,6 +1244,25 @@ Mitigación:
 - complementar con fuentes de gasto o residentes solo como contexto;
 - mantener las conclusiones dentro del alcance definido.
 
+## 7.11. Controles automáticos de calidad esperados
+
+Además de revisar problemas de calidad durante el EDA, el pipeline incorporará validaciones automáticas antes de publicar la capa gold. Las comprobaciones mínimas serán:
+
+| Control | Regla prevista | Dataset afectado |
+|---|---|---|
+| Unicidad de clave primaria | No debe haber duplicados para la clave definida de cada tabla gold | Todos los gold |
+| Claves no nulas | `territory_id`, `month_id`, `target_month_id` o `year` no pueden faltar cuando sean clave | Todos los gold |
+| Territorios mapeados | Todo territorio de la fuente principal debe existir en `dim_territory` | Demanda y modelado |
+| Rangos de porcentajes | `occupancy_rate_pct`, `weekend_occupancy_rate_pct` y tasas similares deben estar entre 0 y 100, salvo error documentado | Demanda |
+| Recuentos no negativos | Viajeros, pernoctaciones, plazas, establecimientos y empresas no pueden ser negativos | Demanda y empresas |
+| Coherencia total/procedencia | `domestic + foreign` debe aproximarse al total cuando la fuente publique ambas partes | Demanda |
+| Ratios con denominador válido | No se calculan ratios si el denominador es nulo o menor o igual que cero | Demanda y oportunidad |
+| Continuidad temporal mínima | Para modelado se exigirá histórico suficiente, especialmente para `lag_12` | Modelado |
+| Sin fuga de información | Las features de modelado solo pueden usar meses anteriores al mes objetivo | Modelado |
+| Contexto correctamente etiquetado | Toda variable de precio, gasto o empresas incorporada a una fila mensual debe llevar frecuencia y nivel territorial real | Demanda y oportunidad |
+
+Los registros que no superen una validación no se corregirán de forma automática sin revisión. Se marcarán mediante `data_quality_flag`, se excluirán del modelado si afectan a la variable objetivo o se mantendrán únicamente para análisis descriptivo si el problema no compromete su interpretación.
+
 ---
 
 # 8. Decisiones de limpieza y transformación previstas
@@ -1257,10 +1380,11 @@ No se agregarán duplicados automáticamente sin entender su origen.
 
 Decisiones previstas:
 
-- viajeros, pernoctaciones, establecimientos, plazas y personal se almacenarán como enteros nulos (`int64 nullable`);
+- viajeros y pernoctaciones se almacenarán como enteros nulos (`int64 nullable`) cuando la fuente los publique como recuentos;
+- establecimientos abiertos estimados, plazas estimadas y personal ocupado se almacenarán como `float64 nullable` para conservar su naturaleza de magnitudes estimadas;
 - estancia media, ocupación, índices y tasas se almacenarán como `float64`;
 - porcentajes de ocupación se guardarán en escala 0-100 con sufijo `_pct`;
-- proporciones derivadas como `domestic_share` se guardarán en escala 0-1;
+- proporciones derivadas como `domestic_travellers_share` se guardarán en escala 0-1;
 - los índices como `tourism_pressure_index` se escalarán 0-100;
 - todos los campos de fecha se convertirán a tipos fecha o identificadores normalizados.
 
@@ -1270,8 +1394,10 @@ Variables derivadas iniciales:
 
 | Variable | Fórmula o lógica prevista | Uso |
 |---|---|---|
-| `domestic_share` | `travellers_domestic / travellers_total` o `overnight_stays_domestic / overnight_stays_total` según disponibilidad | Perfil de demanda |
-| `foreign_share` | Complemento de demanda extranjera | Perfil de demanda |
+| `domestic_travellers_share` | `travellers_domestic / travellers_total` si el denominador existe y es mayor que cero | Perfil de viajeros |
+| `foreign_travellers_share` | `travellers_foreign / travellers_total` si el denominador existe y es mayor que cero | Perfil de viajeros |
+| `domestic_overnight_stays_share` | `overnight_stays_domestic / overnight_stays_total` si el denominador existe y es mayor que cero | Perfil de pernoctaciones |
+| `foreign_overnight_stays_share` | `overnight_stays_foreign / overnight_stays_total` si el denominador existe y es mayor que cero | Perfil de pernoctaciones |
 | `overnight_stays_per_place` | `overnight_stays_total / places_estimated` | Presión sobre capacidad |
 | `travellers_per_establishment` | `travellers_total / establishments_estimated` | Intensidad por alojamiento |
 | `weekend_dependence_index` | Diferencia relativa entre ocupación fin de semana y ocupación mensual | Recomendaciones de fines de semana |
@@ -1283,10 +1409,12 @@ Variables derivadas iniciales:
 | `lag_3` | Valor de tres meses antes | Modelo |
 | `lag_12` | Valor del mismo mes del año anterior | Estacionalidad |
 | `seasonality_index` | Intensidad relativa del mes frente a la media anual o histórica del territorio | Segmentación |
-| `tourism_pressure_index` | Combinación normalizada de ocupación, pernoctaciones por plaza y tendencia | Dashboard/recomendaciones |
-| `business_opportunity_index` | Índice por tipo de negocio basado en demanda, estacionalidad, estancia, fin de semana y densidad empresarial | Recomendaciones |
+| `tourism_pressure_index` | Fórmula inicial: `0.40 * occupancy_score + 0.30 * overnight_stays_per_place_score + 0.20 * demand_trend_score + 0.10 * weekend_pressure_score` | Dashboard/recomendaciones |
+| `business_opportunity_index` | Combinación ponderada por `business_type` de presión turística, desviación frente a media histórica, estancia media, dependencia de fin de semana y densidad empresarial | Recomendaciones |
 
-Las fórmulas exactas de los índices podrán ajustarse durante el análisis exploratorio, pero deberán seguir siendo deterministas, interpretables y documentadas.
+Las fórmulas exactas de los índices podrán ajustarse durante el análisis exploratorio, pero deberán seguir siendo deterministas, interpretables y documentadas. Para evitar arbitrariedad, cada componente se normalizará a escala 0-100 por territorio o por conjunto comparable, y los pesos finales se registrarán en `data/metadata/schema_gold.yml` o en un fichero específico de reglas.
+
+La regla inicial de `covid_period` será marcar como `true` los meses entre `2020-03` y `2021-12`, ambos incluidos. Durante el EDA se comprobará si el efecto debe ampliarse o tratarse de forma diferenciada en 2022.
 
 ## 8.9. Agregaciones necesarias
 
@@ -1316,7 +1444,19 @@ Se descartarán o se dejarán fuera del MVP:
 
 También se evitará entrenar modelos en territorios con histórico insuficiente, aunque puedan mantenerse en el dashboard descriptivo.
 
-## 8.11. Criterios para considerar válido un registro
+## 8.11. Separación temporal y prevención de fuga de información
+
+El dataset de modelado se construirá después de ordenar cada territorio cronológicamente. No se utilizará división aleatoria de filas, porque rompería la estructura temporal y podría producir resultados artificialmente optimistas.
+
+Reglas iniciales:
+
+- las variables `lag_*` y `rolling_*` se calcularán usando solo meses anteriores al `target_month_id`;
+- para horizonte `forecast_horizon = 1`, las features disponibles llegarán como máximo hasta el mes anterior al objetivo;
+- el test se reservará con los últimos 12 o 24 meses disponibles, según longitud final de la serie;
+- se aplicará backtesting temporal o validación walk-forward para comparar modelos frente a baselines;
+- cualquier variable contextual anual o trimestral se usará solo si representa información que razonablemente habría estado disponible antes del mes objetivo, o se marcará como variable de análisis pero no de predicción.
+
+## 8.12. Criterios para considerar válido un registro
 
 Un registro de `gold_tourism_demand_monthly` será válido para análisis descriptivo si cumple:
 
@@ -1431,7 +1571,7 @@ Esta simplificación mantendría la coherencia del proyecto porque conserva su a
 | Mezclar niveles territoriales y duplicar totales | Métricas infladas y conclusiones erróneas | Mantener `territory_level`, no sumar niveles incompatibles |
 | Usar gasto turístico como beneficio previsto | Interpretación incorrecta y poco defendible | Usar oportunidad relativa, escenarios e índices no monetarios |
 | Series incompletas en puntos turísticos | Modelos inestables | Priorizar provincia o comunidad autónoma para modelado |
-| Datos anuales repetidos en tabla mensual | Falsa precisión temporal | Marcar `source_frequency` y usar solo como contexto |
+| Datos anuales repetidos en tabla mensual | Falsa precisión temporal | Marcar `business_context_frequency`, `business_context_territory_level` y usar solo como contexto |
 | Variables actuales usadas para predecir el mismo mes | Fuga de información | Separar dataset descriptivo y dataset de modelado con lags |
 | Periodo COVID distorsiona patrones | Errores y medias poco representativas | Crear `covid_period` y comparar modelos con/sin esos meses |
 | Índice de precios mal interpretado como precio real | Conclusiones incorrectas | Nombrar y documentar como índice, no como tarifa |
