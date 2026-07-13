@@ -4,278 +4,757 @@
 
 Este documento corresponde al archivo `docs/entregas/02_datos_necesarios.md`.
 
-La entrega anterior se mantiene en `docs/entregas/01_ideas_producto.md`, garantizando la trazabilidad del proyecto desde la fase inicial de ideación hasta la selección de la idea definitiva.
+La entrega anterior se mantiene en `docs/entregas/01_ideas_producto.md`, garantizando la trazabilidad del proyecto desde la fase inicial de ideación hasta la selección y posterior acotación de la idea definitiva.
 
 ---
 
 # 1. Idea seleccionada
 
-La idea seleccionada para continuar el proyecto es una **suite digital “marca blanca” para microempresas pequeñas y rurales**, orientada a ayudar a negocios con baja digitalización a gestionar mejor sus datos de ventas, clientes, productos y actividad comercial. La visión general de producto sería una herramienta que pudiera ser ofrecida por ayuntamientos, asociaciones empresariales, cámaras de comercio, consultoras locales, grupos de desarrollo rural o entidades de apoyo a pymes bajo su propia marca. Sin embargo, para mantener el proyecto dentro de un alcance realista de Data Science / IA, el MVP no consistirá en construir una suite empresarial completa, sino en desarrollar un **módulo analítico y de recomendaciones operativas** que demuestre cómo una microempresa puede convertir datos simples en decisiones útiles.
+La idea seleccionada para continuar el proyecto es un **sistema de analítica predictiva de demanda turística rural y estimación de oportunidades para microempresas locales**. La solución estará dirigida principalmente a alojamientos de turismo rural, pero también a pequeños negocios de los territorios vinculados directa o indirectamente con sus visitantes: restaurantes, cafeterías, comercios de producto local, artesanía, empresas de actividades, guías, transporte local y asociaciones empresariales o entidades públicas de apoyo al tejido económico rural.
 
 ## Problema que resuelve
 
-Muchas microempresas, especialmente en entornos rurales o municipios pequeños, siguen gestionando su actividad diaria con herramientas dispersas como WhatsApp, hojas de cálculo, libretas, agendas manuales, correos aislados o conversaciones informales con clientes. Esta forma de trabajo puede ser suficiente en fases iniciales, pero limita la capacidad de seguimiento comercial, dificulta recordar tareas pendientes, impide medir con claridad qué productos o servicios funcionan mejor y reduce la posibilidad de anticiparse a la estacionalidad. El problema no es únicamente tecnológico, sino también operativo y competitivo: negocios pequeños con pocos recursos compiten frente a cadenas, plataformas digitales o empresas mejor organizadas, pero no cuentan con sistemas que conviertan sus datos cotidianos en decisiones útiles. Resolver este problema aportaría valor porque permitiría mejorar la eficiencia operativa, aumentar la fidelización de clientes, profesionalizar la comunicación comercial y fortalecer la economía local mediante herramientas de decisión accesibles.
+Las microempresas rurales suelen tomar decisiones sobre apertura, personal, compras, existencias, campañas, actividades y colaboraciones con información limitada. En muchos casos conocen su experiencia pasada, pero no disponen de herramientas para anticipar con suficiente rigor cuándo aumentará o disminuirá la demanda turística del territorio, cuánto tiempo permanecerán los visitantes, qué peso tendrá la demanda nacional o extranjera o qué meses presentan mayor riesgo de baja actividad. Esta incertidumbre afecta tanto a los propios alojamientos rurales como a otros negocios que dependen del flujo de viajeros alojados en la zona. El problema no consiste únicamente en la falta de digitalización interna, sino también en la dificultad para transformar estadísticas oficiales dispersas en información comprensible y útil para la planificación de pequeños negocios.
 
 ## Solución planteada
 
-La solución se abordará desde un enfoque de Data Science, IA aplicada y visualización de datos. El núcleo del proyecto será un sistema capaz de importar datos sencillos desde CSV o Excel —ventas, clientes anonimizados, productos o servicios, tareas, interacciones y campañas—, limpiarlos, estructurarlos y transformarlos en indicadores comprensibles para personas sin perfil técnico. Sobre esos datos se aplicarán técnicas de análisis descriptivo, segmentación de clientes, detección de clientes inactivos, análisis de productos más vendidos, identificación de patrones temporales, cálculo de métricas comerciales y generación de recomendaciones accionables. La solución no se plantea como una plataforma SaaS completa, sino como un prototipo funcional que demuestre el valor de ordenar y explotar datos básicos en microempresas.
+La solución se abordará desde un enfoque de Data Science, analítica territorial y visualización de datos. El proyecto integrará exclusivamente **fuentes españolas oficiales**, principalmente la Encuesta de Ocupación en Alojamientos de Turismo Rural y el Índice de Precios de Alojamientos de Turismo Rural del Instituto Nacional de Estadística. Estas fuentes se complementarán, cuando la granularidad sea compatible, con información oficial sobre gasto turístico de residentes y visitantes internacionales y con datos agregados del tejido empresarial turístico. A partir de estas fuentes se construirá un conjunto de datos reproducible para analizar estacionalidad, comparar territorios, predecir viajeros, pernoctaciones u ocupación y generar indicadores de oportunidad para distintas actividades económicas locales.
+
+El alojamiento rural se utilizará como **indicador principal de presencia turística** en el territorio. Las pernoctaciones, los viajeros, la estancia media y el grado de ocupación permiten aproximar cuándo existe una mayor concentración de visitantes potenciales. Esta demanda prevista se traducirá en recomendaciones operativas diferenciadas según el tipo de negocio. Por ejemplo, un restaurante podría anticipar periodos de mayor afluencia, una empresa de actividades podría programar experiencias en meses con mayor estancia media y un comercio local podría preparar campañas o existencias antes de periodos de alta ocupación.
 
 ## MVP del proyecto final
 
-El producto mínimo viable consistirá en un **prototipo funcional de dashboard analítico y asistente de recomendaciones operativas para microempresas**, con una interfaz sencilla y enfoque de marca blanca. El MVP permitirá cargar o simular datos de un pequeño negocio, visualizar indicadores clave de ventas, clientes, productos, tareas y campañas, y generar recomendaciones como “clientes a los que conviene contactar”, “productos con mayor margen o recurrencia”, “días o meses con mayor actividad”, “posibles periodos de baja demanda” o “acciones comerciales prioritarias”. El resultado final deberá poder mostrarse funcionando mediante un repositorio con código, datos de ejemplo, notebooks o scripts de análisis, documentación técnica y un dashboard interactivo o aplicación web ligera.
+El producto mínimo viable consistirá en un **demostrador analítico interactivo** con cinco componentes:
+
+1. Un pipeline reproducible de descarga, limpieza, normalización e integración de datos oficiales.
+2. Un módulo descriptivo de demanda turística rural por territorio y periodo.
+3. Un modelo predictivo para estimar una variable principal, previsiblemente pernoctaciones o grado de ocupación, con validación temporal.
+4. Un módulo de segmentación o comparación de territorios según estacionalidad, ocupación, estancia media y procedencia de los viajeros.
+5. Un sistema de recomendaciones explicables para alojamientos rurales y negocios locales relacionados con la actividad turística.
+
+El resultado se mostrará mediante notebooks o scripts, documentación técnica y una aplicación ligera o dashboard interactivo. La interfaz permitirá seleccionar territorio y periodo, consultar evolución histórica, visualizar previsiones, comparar zonas y obtener recomendaciones operativas.
 
 ## Alcance del MVP
 
-El MVP se limitará a un módulo analítico y de recomendaciones. Incluirá carga de datos de ejemplo, limpieza, análisis descriptivo, segmentación básica de clientes, detección de inactividad, visualización de indicadores y generación de recomendaciones explicables.
+El MVP se centrará en **predecir demanda turística territorial y estimar oportunidades económicas relativas**, no en calcular las ventas o beneficios exactos de una empresa concreta.
 
-Queda fuera del alcance del MVP construir una plataforma SaaS completa, integrar WhatsApp en producción, gestionar pagos reales, automatizar campañas comerciales reales o almacenar datos personales identificables. La suite completa se mantiene como visión futura del producto, pero no como objetivo de desarrollo de esta entrega ni del MVP final.
+Queda dentro del alcance:
+
+- Analizar viajeros, pernoctaciones, estancia media, establecimientos, plazas, ocupación y personal ocupado.
+- Analizar la evolución del índice de precios de alojamientos rurales.
+- Comparar comunidades autónomas, provincias, zonas turísticas o puntos turísticos cuando existan datos suficientes.
+- Predecir demanda a nivel territorial y mensual.
+- Identificar temporadas altas, bajas y cambios anómalos.
+- Agrupar territorios con comportamientos similares.
+- Crear indicadores de oportunidad para alojamiento, restauración, actividades, comercio local y otros servicios.
+- Generar recomendaciones explicables basadas en predicciones, indicadores y reglas transparentes.
+
+Queda fuera del alcance:
+
+- Predecir reservas, ventas o beneficios netos de un establecimiento individual.
+- Construir un CRM, sistema de reservas o plataforma SaaS completa.
+- Realizar recomendaciones personalizadas a clientes.
+- Utilizar datos no españoles o fuentes privadas no oficiales como base del modelo.
+- Afirmar que el gasto turístico total se distribuye íntegramente entre negocios del municipio.
+- Presentar el prototipo como una solución comercial validada para cualquier territorio rural sin una validación local posterior.
+
+## Naturaleza del resultado
+
+El proyecto se presentará como una **prueba de concepto basada en datos oficiales**, válida para demostrar el potencial de la analítica territorial. Las predicciones indicarán demanda esperada del territorio, mientras que las estimaciones para negocios relacionados se formularán como:
+
+- oportunidad económica potencial;
+- presión de demanda comercial;
+- intensidad turística esperada;
+- escenario de actividad;
+- recomendación operativa.
+
+No se utilizará el término “beneficio previsto” salvo que en una fase posterior se disponga de datos internos de ingresos, costes, capacidad y márgenes de una empresa real.
 
 ---
 
 # 2. Datos necesarios
 
-Para desarrollar esta idea de forma rigurosa, el proyecto necesitará datos que representen la actividad diaria de una microempresa. El foco principal no estará en grandes volúmenes de datos desde el inicio, sino en construir un modelo de datos coherente, reutilizable y ampliable, capaz de adaptarse a negocios pequeños con información incompleta o poco estructurada.
-
 ## 2.1. Preguntas de negocio que deben responder los datos
 
 Los datos deberán permitir responder, como mínimo, a las siguientes preguntas:
 
-- ¿Cuáles son los productos o servicios más vendidos y cuáles generan mayor valor económico?
-- ¿Qué clientes compran con más frecuencia, cuáles llevan tiempo inactivos y cuáles podrían estar en riesgo de pérdida?
-- ¿Existen patrones de estacionalidad por día de la semana, mes, campaña, festivo o temporada turística?
-- ¿Qué canales generan más ventas o interacciones: presencial, teléfono, WhatsApp, web, redes sociales u otros?
-- ¿Qué tareas comerciales o recordatorios están pendientes, vencidos o asociados a clientes relevantes?
-- ¿Qué campañas o acciones de comunicación generan respuesta, recompra o incremento de ventas?
-- ¿Qué recomendaciones simples puede ofrecer el sistema para mejorar seguimiento, ventas y fidelización?
+### Demanda turística rural
 
-Estas preguntas conectan directamente el problema de negocio con el uso de Data Science: no se trata solo de almacenar datos, sino de convertir información operativa en decisiones prácticas.
+- ¿Cómo evolucionan los viajeros y las pernoctaciones por mes y territorio?
+- ¿Qué meses presentan mayor o menor grado de ocupación?
+- ¿Cuál es la estancia media y cómo varía a lo largo del año?
+- ¿Qué territorios dependen más del turismo residente en España y cuáles de viajeros extranjeros?
+- ¿Qué diferencias existen entre la ocupación general y la ocupación en fin de semana?
+- ¿Qué territorios presentan una demanda estable y cuáles una estacionalidad elevada?
+- ¿Se puede predecir la demanda de los próximos meses con un error razonable?
+
+### Oferta y capacidad
+
+- ¿Cuántos establecimientos y plazas están disponibles en cada territorio?
+- ¿Cómo se relaciona la capacidad ofertada con las pernoctaciones y la ocupación?
+- ¿Qué territorios presentan mayor presión de demanda respecto a su capacidad?
+- ¿Cómo evoluciona el personal ocupado en relación con la actividad turística?
+- ¿Existe relación entre evolución de precios y evolución de demanda?
+
+### Ecosistema empresarial
+
+- ¿Qué actividades económicas relacionadas con el turismo tienen mayor presencia en cada territorio?
+- ¿Existe una concentración suficiente de alojamiento, restauración, transporte o actividades recreativas para absorber la demanda?
+- ¿Qué territorios muestran un volumen de pernoctaciones elevado respecto al número de empresas turísticas?
+- ¿Dónde podrían existir oportunidades de colaboración entre alojamientos y negocios complementarios?
+
+### Oportunidad económica y recomendaciones
+
+- ¿Qué meses son más adecuados para reforzar personal, existencias o programación de actividades?
+- ¿Cuándo conviene iniciar campañas para reducir la estacionalidad?
+- ¿Qué tipos de negocio pueden beneficiarse más de una subida prevista de pernoctaciones?
+- ¿Cuándo se concentra la demanda en fines de semana?
+- ¿Qué territorios presentan patrones similares y pueden compararse entre sí?
+- ¿Qué recomendaciones operativas pueden formularse de manera transparente y justificable?
 
 ## 2.2. Variables o campos necesarios
 
-El proyecto necesitará un modelo de datos compuesto por varias entidades. Para el MVP no será obligatorio disponer de todas ellas en un entorno real, pero sí conviene definirlas desde el inicio para que el proyecto pueda crecer en entregas posteriores.
+### Fuente principal: ocupación en alojamientos de turismo rural
 
-| Bloque de datos | Variables o campos necesarios | Uso dentro del proyecto |
+| Bloque | Variables o campos | Uso previsto |
 |---|---|---|
-| Negocio | `business_id`, nombre comercial anonimizado, sector, CNAE o categoría, municipio, provincia, tipo de entorno, tamaño aproximado, fecha de alta, canal principal de venta | Permite diferenciar negocios, adaptar el análisis por sector y preparar una futura arquitectura multiempresa o marca blanca. |
-| Clientes | `customer_id_hash`, fecha de primera compra, fecha de última compra, municipio o zona agregada, segmento, canal preferido, número de compras, valor acumulado, consentimiento comercial si aplica | Permite segmentación, análisis RFM, detección de clientes inactivos y recomendaciones de seguimiento sin almacenar datos personales directos. |
-| Productos o servicios | `product_id`, nombre normalizado, categoría, precio, coste estimado, margen estimado, estado activo/inactivo, proveedor opcional, estacionalidad esperada | Permite analizar productos top, categorías rentables, evolución de demanda y recomendaciones de surtido. |
-| Ventas o pedidos | `order_id`, `business_id`, `customer_id_hash`, fecha y hora, canal, importe bruto, descuentos, impuestos, importe neto, método de pago agrupado, estado del pedido, devolución o cancelación | Es el bloque imprescindible para medir actividad, ingresos, frecuencia, ticket medio, recurrencia y evolución temporal. |
-| Líneas de venta | `order_line_id`, `order_id`, `product_id`, cantidad, precio unitario, descuento por línea, importe total de línea, margen estimado | Permite análisis por producto, cesta de compra, productos relacionados y recomendaciones comerciales. |
-| Tareas comerciales | `task_id`, `business_id`, `customer_id_hash` opcional, tipo de tarea, fecha de creación, fecha límite, estado, prioridad, resultado | Permite analizar tareas vencidas, carga operativa, seguimiento comercial y generación de alertas. |
-| Interacciones | `interaction_id`, `customer_id_hash`, canal, fecha, tipo de interacción, motivo, resultado, campaña asociada | Permite medir relación con clientes, respuesta a acciones comerciales y oportunidades de fidelización. |
-| Campañas | `campaign_id`, fecha de inicio, fecha de fin, canal, objetivo, segmento impactado, coste estimado, ventas asociadas, respuestas | Permite evaluar campañas y generar recomendaciones futuras. |
-| Calendario | fecha, día de la semana, mes, trimestre, año, festivo nacional/autonómico/local, temporada, evento local | Permite análisis temporal, estacionalidad y comparación de periodos. |
-| Datos externos | población municipal, densidad empresarial, indicadores de digitalización, clima, eventos, puntos de interés, turismo o actividad económica local | Permiten contextualizar el negocio y enriquecer el análisis, aunque no sustituyen los datos operativos. |
+| Tiempo | año, mes, periodo, fecha normalizada, trimestre, temporada | Series temporales, estacionalidad y validación temporal |
+| Territorio | España, comunidad autónoma, provincia, zona turística, punto turístico, código territorial | Comparación geográfica y selección de caso de estudio |
+| Procedencia | residentes en España, residentes en el extranjero, comunidad autónoma de procedencia o país de residencia cuando esté disponible | Perfil agregado de la demanda |
+| Demanda | viajeros, pernoctaciones, estancia media | Medición y predicción de actividad turística |
+| Oferta | establecimientos abiertos estimados, plazas estimadas | Capacidad disponible |
+| Ocupación | grado de ocupación por plazas, por plazas en fin de semana y por habitaciones | Intensidad de uso y presión de demanda |
+| Empleo | personal ocupado | Aproximación a necesidades operativas del sector |
+| Modalidad | modalidad de alojamiento o alquiler, cuando esté disponible | Comparación entre categorías |
+| Estado del dato | provisional/definitivo, disponible/no disponible, observación estadística | Control de calidad y trazabilidad |
 
-## 2.3. Granularidad adecuada
+### Índice de precios de alojamientos de turismo rural
 
-La granularidad principal del proyecto debe ser a nivel de **línea de venta o transacción**, no únicamente a nivel de resumen mensual. Esto es importante porque muchas preguntas relevantes —productos más vendidos, ticket medio, recurrencia, cesta de compra, margen por categoría o comportamiento de clientes— solo pueden analizarse correctamente si existe detalle por operación.
+| Bloque | Variables o campos | Uso previsto |
+|---|---|---|
+| Tiempo | año y mes | Evolución y comparación temporal |
+| Territorio | nacional y comunidad autónoma cuando esté disponible | Comparación territorial |
+| Precio | índice general, tasa de variación, modalidad de alquiler, tipo de tarifa | Variable explicativa y análisis de presión de precios |
 
-La granularidad recomendada será la siguiente:
+### Turismo de residentes en España
 
-| Tipo de información | Granularidad adecuada |
-|---|---|
-| Ventas | Línea de venta, pedido o transacción individual |
-| Clientes | Cliente anonimizado o pseudonimizado |
-| Productos o servicios | Producto o servicio individual, agrupable por categoría |
-| Tiempo | Fecha y hora para ventas; agregación diaria, semanal y mensual para análisis |
-| Tareas | Tarea individual con estado y fecha límite |
-| Interacciones | Evento individual de contacto o comunicación |
-| Campañas | Campaña individual, con clientes impactados y resultados |
-| Contexto territorial | Municipio, provincia o comarca |
-| Datos externos | Día, mes, municipio, sector o indicador agregado |
+| Bloque | Variables o campos | Uso previsto |
+|---|---|---|
+| Viaje | destino, duración, motivo, alojamiento principal, transporte | Caracterización agregada de la demanda |
+| Gasto | gasto total, gasto medio y categorías de gasto | Construcción de escenarios de oportunidad |
+| Categorías de gasto | paquete turístico, alojamiento, transporte, bares y restaurantes, actividades recreativas/culturales/deportivas, bienes duraderos y resto | Estimación relativa por tipo de negocio |
+| Perfil | variables sociodemográficas agregadas disponibles | Contexto de demanda, no personalización individual |
+| Tiempo y territorio | trimestre/año y destino según nivel publicado | Integración con la demanda rural cuando sea compatible |
 
-Para el dashboard, las visualizaciones podrán trabajar con agregaciones diarias, semanales o mensuales. Sin embargo, la base de datos debe conservar el mayor nivel de detalle posible para permitir análisis posteriores.
+### Gasto turístico de visitantes internacionales
 
-## 2.4. Profundidad histórica necesaria
+| Bloque | Variables o campos | Uso previsto |
+|---|---|---|
+| Viaje | destino principal, país de residencia, vía de acceso, motivo, alojamiento, organización | Contextualización del visitante internacional |
+| Gasto | gasto total, gasto medio, gasto medio diario y partidas de gasto disponibles | Escenarios de oportunidad para demanda extranjera |
+| Tiempo | año y mes | Integración temporal |
+| Territorio | España y destino principal según publicación | Uso solo cuando el nivel territorial sea compatible |
 
-La profundidad histórica dependerá del tipo de análisis:
+### Empresas activas asociadas al turismo
 
-- Para un dashboard descriptivo básico, podrían ser suficientes entre 3 y 6 meses de datos.
-- Para analizar recurrencia de clientes, conviene disponer de al menos 6 a 12 meses.
-- Para detectar estacionalidad anual, se necesita como mínimo 1 año completo.
-- Para comparar temporadas y mejorar predicciones, sería deseable disponer de 24 a 36 meses.
-- Para negocios rurales con alta estacionalidad —turismo rural, hostelería, comercio vinculado a campañas agrícolas o festividades locales— será especialmente importante cubrir periodos de alta y baja demanda.
+| Bloque | Variables o campos | Uso previsto |
+|---|---|---|
+| Tiempo | año | Evolución del tejido empresarial |
+| Territorio | España, comunidad autónoma, provincia u otra desagregación disponible | Comparación territorial |
+| Actividad | transporte, hostelería, agencias de viajes y otras actividades turísticas | Identificación del ecosistema local |
+| Subactividad | alojamiento, servicios de comida y bebida, transporte, industria cultural, actividades deportivas, recreativas y de entretenimiento | Recomendaciones por tipo de negocio |
+| Unidad | empresas activas y unidades locales | Densidad y capacidad empresarial |
 
-Como criterio inicial, el MVP debería trabajar con al menos **12 meses de datos transaccionales**, aunque podría complementarse con datos sintéticos o datasets públicos para demostrar funcionalidades si no se dispone todavía de datos reales.
+### Variables derivadas
 
-## 2.5. Volumen aproximado de datos
+El proyecto generará variables adicionales:
 
-El volumen razonable para el MVP no necesita ser masivo, porque el problema principal de las microempresas suele ser la falta de estructura y calidad de los datos, no el exceso de volumen. Aun así, el proyecto debe estar diseñado para escalar a varias empresas en el futuro.
+- `year`
+- `month`
+- `quarter`
+- `season`
+- `territory_id`
+- `territory_level`
+- `travellers_total`
+- `overnight_stays_total`
+- `average_stay`
+- `occupancy_rate`
+- `weekend_occupancy_rate`
+- `establishments_estimated`
+- `places_estimated`
+- `staff_employed`
+- `domestic_share`
+- `foreign_share`
+- `overnight_stays_per_place`
+- `travellers_per_establishment`
+- `overnight_stays_per_tourism_business`
+- `year_on_year_change`
+- `month_on_month_change`
+- `rolling_mean_3m`
+- `rolling_mean_12m`
+- `lag_1`
+- `lag_3`
+- `lag_12`
+- `seasonality_index`
+- `tourism_pressure_index`
+- `business_opportunity_index`
+- `covid_period`
+- `forecast_value`
+- `forecast_interval_lower`
+- `forecast_interval_upper`
 
-Un volumen adecuado sería:
+## 2.3. Variable objetivo del modelo
+
+La variable objetivo principal se decidirá después del análisis exploratorio y de calidad. Las candidatas son:
+
+1. **Pernoctaciones mensuales**, por representar mejor el volumen total de presencia turística que el número de viajeros.
+2. **Grado de ocupación por plazas**, por relacionar demanda y capacidad.
+3. **Viajeros mensuales**, como medida complementaria de afluencia.
+
+La primera opción recomendada es predecir **pernoctaciones mensuales por territorio**, porque:
+
+- refleja el volumen de presencia turística;
+- se relaciona con consumo potencial de restauración, actividades y comercio;
+- permite construir series temporales suficientemente extensas;
+- puede agregarse y compararse con capacidad, estancia media y ocupación;
+- evita depender de datos individuales.
+
+El grado de ocupación se mantendrá como segunda variable objetivo o como indicador complementario.
+
+## 2.4. Granularidad adecuada
+
+La unidad analítica principal será:
+
+> **territorio × mes**
+
+El territorio se definirá mediante el nivel con mayor equilibrio entre detalle y estabilidad:
+
+1. Provincia.
+2. Zona turística.
+3. Comunidad autónoma.
+4. Punto turístico, únicamente cuando la serie tenga cobertura suficiente.
+
+La granularidad prevista por fuente será:
+
+| Fuente | Granularidad temporal | Granularidad territorial | Granularidad temática |
+|---|---|---|---|
+| Ocupación de turismo rural | mensual | nacional, comunidad autónoma, provincia, zona y punto turístico | oferta, demanda, procedencia y ocupación |
+| Índice de precios rural | mensual | nacional y comunidad autónoma según tabla | índice, tarifa y modalidad |
+| Turismo de residentes | trimestral o anual según tabla | destino publicado | viajes, motivo, alojamiento y gasto |
+| EGATUR | mensual | destino publicado | visitante internacional, viaje y gasto |
+| Empresas activas en turismo | anual | territorio publicado | actividad y subactividad turística |
+
+No se afirmará que los resultados son municipales cuando la fuente solo permita trabajar por provincia, zona o punto turístico. Cuando una zona turística agrupe varios municipios, el dashboard mostrará expresamente su composición territorial.
+
+## 2.5. Profundidad histórica necesaria
+
+Para detectar estacionalidad y validar predicciones se necesita una serie temporal extensa.
+
+Se plantea:
+
+- **Mínimo aceptable:** 5 años completos de datos mensuales.
+- **Objetivo del MVP:** entre 10 y 15 años de datos mensuales.
+- **Escenario deseable:** utilizar toda la serie comparable disponible.
+- **Comparación interanual:** al menos 24 meses.
+- **Variables empresariales:** histórico anual disponible compatible.
+- **Gasto turístico:** histórico suficiente para calcular medias y escenarios por periodo.
+
+La Encuesta de Ocupación en Alojamientos de Turismo Rural dispone de resultados históricos anuales publicados desde 2001. La extensión exacta de las series mensuales y la comparabilidad de cada tabla se confirmarán durante la descarga.
+
+Los años 2020 y 2021 requerirán tratamiento específico por el cierre de establecimientos y las alteraciones provocadas por la pandemia. Se evaluarán tres estrategias:
+
+1. Mantenerlos e incluir una variable indicadora de periodo COVID.
+2. Excluirlos del entrenamiento principal y utilizarlos como análisis de choque.
+3. Comparar modelos con y sin esos periodos.
+
+## 2.6. Volumen aproximado de datos
+
+El proyecto no necesita millones de registros, ya que su dificultad principal está en integrar series oficiales heterogéneas y validarlas correctamente.
+
+Volumen esperado después de normalizar las tablas a formato largo:
 
 | Escenario | Volumen aproximado |
-|---|---|
-| MVP mínimo con datos simulados | 3.000 - 10.000 líneas de venta |
-| MVP sólido con dataset público transaccional | 50.000 - 500.000 líneas de venta |
-| Piloto con una microempresa real | 1.000 - 20.000 líneas de venta anuales, según sector |
-| Piloto multiempresa | 10.000 - 200.000 líneas de venta |
-| Prueba de escalabilidad académica | Dataset sintético ampliado hasta 1 - 5 millones de registros |
+|---|---:|
+| MVP mínimo, comunidad autónoma × mes | 3.000 - 10.000 observaciones |
+| MVP provincial con varias variables | 10.000 - 50.000 observaciones |
+| Provincia + zona turística + procedencia | 30.000 - 150.000 observaciones |
+| Integración ampliada con precios, gasto y tejido empresarial | 50.000 - 300.000 observaciones |
 
-Para un proyecto de Máster en IA y Big Data, el valor no dependerá únicamente del tamaño del dataset, sino de la calidad del pipeline: integración de fuentes, limpieza, modelado, trazabilidad, análisis reproducible, visualización, evaluación de modelos y tratamiento responsable de datos.
+El volumen final dependerá del número de territorios, periodos, procedencias y métricas integradas. La suficiencia del proyecto se valorará por la profundidad temporal, calidad, reproducibilidad y coherencia de las variables, no por alcanzar artificialmente un volumen masivo.
 
-## 2.6. Datos imprescindibles y datos deseables
+## 2.7. Datos imprescindibles y deseables
 
-### Datos imprescindibles para el MVP
+### Datos imprescindibles
 
-- Fecha de venta o pedido.
-- Identificador de venta o pedido.
-- Identificador de producto o servicio.
-- Categoría del producto o servicio.
-- Cantidad vendida.
-- Precio unitario o importe total.
-- Identificador de cliente anonimizado o, si no existe, indicador de venta anónima.
-- Canal de venta.
-- Estado de la venta: completada, cancelada o devuelta.
-- Negocio o tienda a la que pertenece el dato.
+- Año y mes.
+- Identificador y nivel territorial.
+- Viajeros.
+- Pernoctaciones.
+- Estancia media.
+- Establecimientos abiertos estimados.
+- Plazas estimadas.
+- Grado de ocupación por plazas.
+- Grado de ocupación en fin de semana.
+- Procedencia agregada nacional/extranjera.
+- Estado o disponibilidad del dato.
 
-Sin estos datos, el proyecto podría realizar visualizaciones básicas de ventas, pero perdería capacidad analítica para segmentar clientes, analizar recurrencia o generar recomendaciones personalizadas.
+### Datos deseables
 
-### Datos deseables pero no obligatorios
-
-- Coste estimado y margen por producto.
-- Interacciones con clientes.
-- Tareas o recordatorios asociados.
-- Campañas de marketing.
-- Canal de comunicación preferido.
-- Ubicación agregada del cliente.
-- Inventario o stock.
-- Festivos, eventos locales o temporadas.
-- Datos meteorológicos para sectores sensibles al clima.
-- Información agregada del municipio y sector.
-- Datos de competencia local o puntos de interés cercanos.
-
-Estos datos ampliarían el valor de la solución, pero no son imprescindibles para demostrar el MVP.
+- Grado de ocupación por habitaciones.
+- Personal ocupado.
+- Índice de precios.
+- Modalidad de alquiler.
+- Tipo de tarifa.
+- Procedencia detallada.
+- Categorías de gasto turístico.
+- Número de empresas y unidades locales por actividad turística.
+- Festivos nacionales y autonómicos.
+- Variables climatológicas oficiales.
+- Información de eventos o temporadas locales.
+- Datos internos agregados de una empresa piloto para validación externa, sin incorporarlos obligatoriamente al repositorio público.
 
 ---
 
 # 3. Fuentes de datos previstas
 
-La estrategia de datos se plantea en cuatro capas: datos públicos transaccionales, datos sintéticos de demostración, datos reales anonimizados si se consiguieran y datos públicos contextuales. Esta combinación permite mantener la viabilidad académica del proyecto sin depender desde el inicio de conseguir datos privados de empresas reales.
+## 3.1. Principio de selección
 
-## 3.1. Tipos de datos utilizados
+El proyecto utilizará únicamente:
 
-- **Datos públicos transaccionales:** se usarán para construir y validar el pipeline analítico.
-- **Datos sintéticos:** se generarán para adaptar el caso a microempresas rurales.
-- **Datos reales anonimizados:** solo se incorporarán si existe una fuente piloto segura, con permisos suficientes y sin datos personales identificables.
-- **Datos públicos contextuales:** INE, Eurostat, datos.gob.es, BOE, AEMET u OpenStreetMap se usarán únicamente para enriquecer el contexto, no como sustituto de los datos operativos internos.
+- organismos públicos españoles;
+- estadísticas oficiales españolas;
+- plataformas públicas estatales que redistribuyen datos oficiales;
+- datos agregados, documentados y accesibles para reutilización académica.
 
-## 3.2. Estrategia general de obtención de datos
+No se utilizarán como fuente principal:
 
-La fuente ideal serían datos reales anonimizados de una o varias microempresas, pero esto puede ser difícil por privacidad, disponibilidad o falta de digitalización previa. Por tanto, el proyecto se desarrollará con una estrategia progresiva:
+- datasets extranjeros;
+- plataformas privadas;
+- datos extraídos de portales comerciales;
+- datos sintéticos para validar el modelo;
+- información sin documentación metodológica suficiente.
 
-1. **Fase inicial:** uso de datasets públicos transaccionales y datos sintéticos para construir el pipeline, el dashboard y los modelos.
-2. **Fase intermedia:** adaptación de plantillas CSV/Excel para simular cómo una microempresa cargaría sus ventas, clientes, productos y tareas.
-3. **Fase avanzada:** incorporación opcional de datos reales anonimizados de una microempresa piloto, siempre que sea legal, viable y seguro.
-4. **Fase de enriquecimiento:** uso de datos públicos de INE, Eurostat, OpenStreetMap, AEMET o calendarios oficiales para contexto territorial, sectorial y temporal.
+## 3.2. Fuente principal
 
-## 3.3. Fuentes concretas previstas
+### Instituto Nacional de Estadística — Encuesta de Ocupación en Alojamientos de Turismo Rural
 
-| Fuente | Uso previsto | Formato esperado | Histórico disponible | Estabilidad y riesgos |
-|---|---|---|---|---|
-| UCI Machine Learning Repository - Online Retail | Dataset transaccional de referencia para construir análisis de ventas, productos, clientes, recurrencia y segmentación. | Excel/CSV tras conversión. | Transacciones entre diciembre de 2010 y diciembre de 2011. UCI indica 541.909 instancias. | Fuente estable y muy usada en proyectos académicos. Riesgo: no representa microempresas rurales españolas y está limitada a un comercio online concreto. |
-| UCI Machine Learning Repository - Online Retail II | Alternativa o ampliación con más histórico para pruebas de segmentación, recurrencia y estacionalidad. | Excel/CSV. | Transacciones entre diciembre de 2009 y diciembre de 2011. | Útil para robustecer el análisis temporal, aunque mantiene el mismo riesgo de desajuste sectorial y geográfico. |
-| Plantillas propias CSV/Excel del proyecto | Representar datos realistas de microempresas: ventas, clientes anonimizados, productos, tareas, campañas e interacciones. | CSV o Excel. | Histórico simulado de 12 a 36 meses. | Máxima adaptación al caso de uso. Riesgo: al ser sintético, deberá documentarse claramente cómo se genera para no confundirlo con datos reales. |
-| Datos reales anonimizados de una microempresa piloto, si se consiguen | Validar el MVP con datos cercanos al problema real. | CSV, Excel o exportación de TPV/ERP/hojas de cálculo. | Dependerá del negocio; objetivo mínimo de 6 a 12 meses. | Alto valor aplicado, pero riesgo de privacidad, baja calidad, formatos inconsistentes y permisos. No será dependencia obligatoria del MVP. |
-| INE - API JSON e INEbase | Obtener datos estadísticos oficiales de población, municipios y estructura empresarial. | JSON, CSV, XLSX o PC-Axis según tabla. | Series estadísticas explotables mediante API JSON. | Fuente pública, oficial y estable. Riesgo bajo, aunque algunas tablas requieren selección previa de dimensiones. |
-| datos.gob.es - Empresas por municipio y actividad principal, DIRCE | Contextualizar la densidad empresarial por municipio y actividad económica. | CSV, XLSX, JSON o HTML. | Datos anuales según disponibilidad de la ficha concreta. | Fuente relevante para justificar enfoque rural y sectorial. Riesgo bajo, aunque son datos agregados y no sustituyen datos operativos internos. |
-| datos.gob.es - Cifras oficiales del padrón por municipio | Caracterizar municipios pequeños, población potencial, ruralidad y contexto territorial. | CSV, XLSX, JSON o PC-Axis. | Serie anual por municipio. | Fuente oficial y estable. Su uso será contextual, no predictivo a nivel cliente. |
-| Eurostat - Digital economy and society database | Justificar el contexto de digitalización empresarial y comparar indicadores de uso TIC, comercio electrónico o intensidad digital por tamaño de empresa. | API, descarga tabular y bases detalladas. | Eurostat publica datasets recientes e históricos sobre economía y sociedad digital. | Fuente oficial europea y estable. Riesgo bajo. Su granularidad es agregada, no sirve para entrenar modelos de clientes. |
-| OpenStreetMap / Overpass API | Obtener puntos de interés, comercios, restaurantes, alojamientos o servicios cercanos para análisis territorial o competencia local. | API, JSON, GeoJSON u OSM. | Datos vivos, actualizados por la comunidad. | Fuente útil para contexto geográfico. Riesgos: cobertura irregular, etiquetas incompletas, cambios de calidad por zona y obligación de respetar la licencia ODbL. |
-| AEMET OpenData | Enriquecer análisis de estacionalidad en sectores sensibles al clima, como hostelería, turismo rural o comercio de temporada. | API y descarga en formatos reutilizables. | Datos meteorológicos históricos y actuales según catálogo. | Fuente oficial. Riesgos: posible necesidad de clave API, límites de uso y complejidad de seleccionar estaciones representativas. |
-| BOE / calendario de fiestas laborales | Incorporar festivos nacionales y autonómicos como variables de calendario para explicar picos o caídas de demanda. | HTML/PDF; posible transformación manual a CSV. | Publicación anual. | Fuente oficial, pero requiere transformación y los festivos locales pueden necesitar fuentes municipales adicionales. |
-| datos.gob.es - Catálogo nacional de datos abiertos | Localizar datasets complementarios por territorio, turismo, comercio, transporte o economía local. | Variable según dataset: CSV, JSON, XLSX o API. | Depende de cada publicador. | Útil como repositorio de búsqueda. Riesgo: heterogeneidad, datasets incompletos o sin actualización frecuente. |
+**Uso previsto**
 
-## 3.4. Enlaces de referencia previstos
+- Construcción del dataset principal.
+- Análisis de oferta y demanda.
+- Predicción de viajeros, pernoctaciones u ocupación.
+- Comparación territorial.
+- Estudio de estacionalidad.
+- Creación de recomendaciones operativas.
 
-- UCI Online Retail: https://archive.ics.uci.edu/dataset/352/online+retail
-- UCI Online Retail II: https://archive.ics.uci.edu/dataset/502/online+retail+ii
-- INEbase: https://www.ine.es
-- API del INE: https://servicios.ine.es/wstempus/js/es/DATOS_TABLA/
-- datos.gob.es: https://datos.gob.es
-- Eurostat Digital Economy and Society: https://ec.europa.eu/eurostat/web/digital-economy-and-society
-- OpenStreetMap: https://www.openstreetmap.org
-- Overpass API: https://overpass-api.de
-- AEMET OpenData: https://opendata.aemet.es
-- BOE: https://www.boe.es
+**Información disponible**
 
-## 3.5. Riesgos detectados en las fuentes
+- Viajeros.
+- Pernoctaciones.
+- Estancia media.
+- Procedencia de viajeros.
+- Establecimientos abiertos estimados.
+- Plazas estimadas.
+- Grados de ocupación.
+- Personal ocupado.
+- Niveles nacional, autonómico, provincial, zona turística y punto turístico.
+- Periodicidad mensual.
 
-| Riesgo | Impacto | Mitigación propuesta |
+**Formato esperado**
+
+Descarga tabular desde INEbase y extracción automatizada cuando sea posible. Los datos se almacenarán en el proyecto como CSV o Parquet normalizado, conservando una copia inmutable de los ficheros originales.
+
+**Enlaces**
+
+- [INE — Alojamientos de turismo rural: encuesta de ocupación e índice de precios](https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176963&idp=1254735576863&menu=ultiDatos)
+- [INE — Resultados mensuales y anuales](https://www.ine.es/dyngs/INEbase/operacion.htm?c=Estadistica_C&cid=1254736176963&idp=1254735576863&menu=resultados)
+- [Dataestur — Ocupación en alojamientos de turismo rural](https://www.dataestur.es/alojamientos/encuesta-ocupacion-turismo-rural/)
+
+**Estabilidad**
+
+Alta. Es una operación oficial del INE con publicación periódica, metodología documentada y actualización mensual.
+
+## 3.3. Fuente principal complementaria
+
+### Instituto Nacional de Estadística — Índice de Precios de Alojamientos de Turismo Rural
+
+**Uso previsto**
+
+- Analizar evolución de precios.
+- Incorporar una variable explicativa al modelo.
+- Comparar demanda y precios.
+- Detectar periodos en los que el precio aumenta o disminuye sin una variación equivalente de demanda.
+
+**Información disponible**
+
+- Índice general.
+- Tasas de variación.
+- Desglose por comunidades autónomas.
+- Modalidad de alquiler.
+- Tipo de tarifa.
+
+**Formato esperado**
+
+Descarga tabular de INEbase y normalización a CSV o Parquet.
+
+**Enlace**
+
+- [INE — Índice de precios de alojamientos de turismo rural](https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176963&idp=1254735576863&menu=ultiDatos)
+
+**Estabilidad**
+
+Alta. Forma parte de la misma operación estadística oficial.
+
+## 3.4. Fuentes para estimar oportunidad económica
+
+### Instituto Nacional de Estadística / Dataestur — Turismo de residentes en España
+
+**Uso previsto**
+
+- Contextualizar los viajes de residentes.
+- Analizar duración, motivo, alojamiento y transporte.
+- Obtener categorías agregadas de gasto.
+- Construir escenarios relativos para restauración, actividades, transporte, comercio y alojamiento.
+
+**Categorías útiles**
+
+- Gasto en alojamiento.
+- Gasto en transporte.
+- Gasto en bares o restaurantes.
+- Gasto en actividades recreativas, culturales y deportivas.
+- Gasto en bienes duraderos.
+- Resto de gastos.
+
+**Limitación**
+
+La fuente representa viajes de residentes en España y no exclusivamente turismo rural. Por tanto, se utilizará como ponderación contextual o escenario, no como prueba de gasto efectivo en un municipio concreto.
+
+**Enlace**
+
+- [Dataestur — Turismo de los residentes](https://www.dataestur.es/viajes-ocio/turismo-residente-etr/)
+
+**Periodicidad y formato**
+
+Publicación trimestral en Dataestur. La plataforma permite consulta mediante API y descarga de ficheros XLSX.
+
+### Instituto Nacional de Estadística / Dataestur — EGATUR
+
+**Uso previsto**
+
+- Contextualizar el gasto de visitantes internacionales.
+- Incorporar país de residencia, motivo, alojamiento y destino principal.
+- Construir escenarios diferenciados entre demanda nacional e internacional.
+
+**Limitación**
+
+La fuente no se utilizará para atribuir gasto exacto a negocios rurales. Solo se integrará cuando el nivel temporal y territorial sea compatible con la encuesta de ocupación rural.
+
+**Enlace**
+
+- [Dataestur — Gasto turístico de visitantes internacionales](https://www.dataestur.es/economia/gasto-turistico-visitantes-egatur/)
+
+**Periodicidad y formato**
+
+Mensual. Consulta mediante Dataestur y descarga por API/XLSX.
+
+## 3.5. Fuente para caracterizar el ecosistema empresarial
+
+### Instituto Nacional de Estadística / Dataestur — Empresas activas en turismo
+
+**Uso previsto**
+
+- Medir el tejido empresarial relacionado con el turismo.
+- Identificar empresas y unidades locales de alojamiento, comida y bebida, transporte y actividades.
+- Crear ratios de demanda respecto a oferta empresarial.
+- Comparar territorios.
+- Generar recomendaciones por tipo de actividad.
+
+**Actividades consideradas**
+
+- Transporte.
+- Hostelería.
+- Agencias de viajes.
+- Otras actividades asociadas al turismo.
+- Alojamiento.
+- Servicios de comida y bebida.
+- Industria cultural.
+- Actividades deportivas, recreativas y de entretenimiento.
+
+**Limitación**
+
+Los datos son agregados y anuales. No muestran ingresos, clientes ni capacidad de cada empresa.
+
+**Enlace**
+
+- [Dataestur — Empresas activas en turismo](https://www.dataestur.es/economia/empresas-activas-asociadas-a-la-actividad-turistica/)
+
+**Periodicidad y formato**
+
+Anual. Consulta mediante Dataestur y descarga por API/XLSX.
+
+## 3.6. API y automatización
+
+Dataestur ofrece una API oficial que permite:
+
+- seleccionar conjuntos de datos;
+- definir parámetros de consulta;
+- generar una URL de petición;
+- automatizar descargas;
+- descargar directamente resultados en formato XLSX.
+
+**Enlace**
+
+- [Dataestur — API de datos turísticos](https://www.dataestur.es/apidata/)
+
+El proyecto conservará:
+
+- fecha de descarga;
+- fuente;
+- tabla o endpoint;
+- parámetros usados;
+- versión del fichero;
+- hash del archivo original;
+- script de transformación.
+
+## 3.7. Fuentes opcionales de enriquecimiento
+
+Solo se añadirán si el núcleo del proyecto ya funciona.
+
+### AEMET OpenData
+
+Posibles variables:
+
+- temperatura media;
+- precipitación;
+- días de lluvia;
+- fenómenos adversos.
+
+Uso: analizar si el clima mejora la predicción en territorios donde las actividades rurales dependen especialmente de las condiciones meteorológicas.
+
+### BOE y calendarios oficiales
+
+Posibles variables:
+
+- festivos nacionales;
+- festivos autonómicos;
+- puentes;
+- Semana Santa;
+- Navidad.
+
+Uso: mejorar la explicación de picos y valles mensuales.
+
+Estas fuentes serán complementarias y no críticas para la viabilidad del MVP.
+
+## 3.8. Arquitectura de datos prevista
+
+Los datos se organizarán en tres niveles:
+
+```text
+data/
+├── raw/
+│   ├── ine_ocupacion_rural/
+│   ├── ine_precios_rurales/
+│   ├── dataestur_etr/
+│   ├── dataestur_egatur/
+│   └── dataestur_empresas_turisticas/
+├── interim/
+│   ├── ocupacion_normalizada/
+│   ├── gasto_normalizado/
+│   └── empresas_normalizadas/
+└── processed/
+    ├── tourism_demand_monthly.parquet
+    ├── business_context_annual.parquet
+    └── modeling_dataset.parquet
+```
+
+La tabla principal de modelado tendrá una fila por territorio y mes. Las fuentes trimestrales o anuales se integrarán mediante reglas documentadas y sin crear una precisión temporal artificial.
+
+## 3.9. Riesgos detectados y mitigaciones
+
+| Riesgo | Impacto | Mitigación |
 |---|---|---|
-| Falta de datos reales de microempresas | Puede limitar la validación aplicada del MVP. | Usar UCI Online Retail, plantillas propias y datos sintéticos documentados. |
-| Datos reales incompletos o desordenados | Puede afectar limpieza, modelado y visualización. | Diseñar validaciones automáticas, diccionario de datos y reglas de calidad. |
-| Ausencia de identificador de cliente | Limita segmentación y fidelización. | Permitir ventas anónimas y aplicar análisis agregado cuando no exista cliente. |
-| Desajuste entre dataset público y negocio rural español | Puede afectar realismo del caso. | Usar dataset público solo como base técnica y adaptar datos sintéticos al contexto rural. |
-| Datos personales en clientes o interacciones | Riesgo legal y ético. | Evitar nombres, teléfonos, direcciones y mensajes; usar identificadores hash o datos sintéticos. |
-| OpenStreetMap incompleto en zonas rurales | Puede sesgar análisis territorial. | Usarlo solo como complemento, no como fuente crítica del MVP. |
-| Festivos locales difíciles de automatizar | Puede complicar la estacionalidad local. | Empezar con festivos nacionales/autonómicos y permitir carga manual de eventos locales. |
-| AEMET requiere tratamiento técnico adicional | Puede aumentar complejidad. | Considerar clima como variable opcional, no imprescindible para el MVP. |
-| Cambios en APIs o formatos | Puede romper procesos de extracción. | Guardar muestras versionadas y documentar scripts de descarga. |
+| Datos agregados, no empresariales | No permiten predecir ventas de un negocio concreto | Presentar el resultado como demanda territorial y oportunidad relativa |
+| Falta de datos para todos los municipios | Limita la utilidad estrictamente municipal | Trabajar por provincia, zona o punto turístico y documentar su composición |
+| Gasto ETR/EGATUR no exclusivo del turismo rural | Puede sobreestimar la aplicabilidad | Usarlo solo como contexto o ponderación, nunca como gasto real local |
+| Diferencias entre territorios | Un único modelo nacional puede generalizar mal | Incluir variables territoriales, segmentar zonas y comparar modelos |
+| Periodo COVID | Introduce ruptura estructural | Incluir variable COVID y evaluar modelos con y sin 2020-2021 |
+| Datos provisionales y revisiones | Los valores pueden cambiar | Versionar descargas y registrar fecha/estado del dato |
+| Valores ausentes o protegidos por secreto estadístico | Reduce continuidad de algunas series | Aplicar reglas de imputación prudentes o excluir series insuficientes |
+| Cambios metodológicos | Pueden romper comparabilidad | Consultar metadatos y restringir el periodo cuando sea necesario |
+| Índice de precios no equivale a precio real | Puede interpretarse incorrectamente | Tratarlo como indicador de evolución, no como tarifa monetaria |
+| Predicción temporal con fuga de información | Métricas artificialmente optimistas | Separación temporal, backtesting y validación walk-forward |
+| Exceso de alcance | Riesgo de no completar el proyecto | Priorizar predicción de una variable y dashboard mínimo |
+| Interpretar oportunidad como beneficio | Puede inducir conclusiones falsas | Usar escenarios e índices, no beneficio neto |
+| Integración de distintas periodicidades | Puede generar falsa granularidad | Mantener la frecuencia original y documentar cualquier agregación |
 
 ---
 
 # 4. Consideraciones de privacidad y protección de datos
 
-El proyecto puede implicar datos personales si se utilizan datos reales de clientes, especialmente nombres, teléfonos, correos electrónicos, direcciones, mensajes de WhatsApp, notas internas, preferencias de compra o historial de comunicaciones. Por este motivo, el diseño del MVP debe seguir un enfoque de minimización de datos: solo se recogerán los campos estrictamente necesarios para el análisis y se evitará almacenar información personal identificable cuando no sea imprescindible.
+Las fuentes principales contienen estadísticas agregadas y no incluyen nombres, teléfonos, correos electrónicos, reservas individuales ni otros identificadores personales.
 
-Para el desarrollo académico, se propone trabajar preferentemente con datos sintéticos, datasets públicos o datos anonimizados. En caso de disponer de datos reales, el identificador de cliente deberá sustituirse por un `customer_id_hash` o un identificador interno pseudonimizado. Es importante distinguir anonimización y pseudonimización: la pseudonimización reduce la vinculación directa con una persona, pero no elimina totalmente la posibilidad de reidentificación, mientras que la anonimización busca hacer los datos no vinculables a ninguna persona concreta.
+Por tanto:
 
-No se deben almacenar en el repositorio público nombres, teléfonos, emails, direcciones completas, conversaciones reales, observaciones sensibles ni datos de pago. Si se incorporan datos de una empresa real, deberán agregarse, filtrarse o transformarse antes de subirlos al repositorio. El repositorio podrá contener esquemas, scripts, notebooks y datos de muestra, pero no datos personales reales.
+- no se trabajará con información personal identificable;
+- no será necesario crear perfiles individuales;
+- no se incluirán datos de clientes;
+- no se analizarán comportamientos de personas concretas;
+- el repositorio podrá ser público sin publicar datos personales;
+- se respetarán las condiciones de reutilización y atribución de cada fuente.
 
-Desde el punto de vista ético, también deben evitarse funcionalidades que puedan perjudicar injustamente a clientes o negocios. Por ejemplo, una recomendación comercial no debería etiquetar a una persona de forma opaca o discriminatoria, ni generar acciones invasivas de marketing. Las recomendaciones del sistema deberán ser explicables, orientadas a la mejora operativa y siempre supervisadas por el usuario del negocio. El sistema no tomará decisiones automáticas con efectos relevantes sobre personas, sino que propondrá acciones como recordatorios, priorización de clientes inactivos o análisis de productos.
+La privacidad presenta un riesgo bajo porque el propio organismo oficial aplica secreto estadístico y publica datos agregados. Aun así, se mantendrán las siguientes medidas:
 
-También se deben aplicar medidas específicas de seguridad y privacidad:
+- conservar únicamente datos publicados oficialmente;
+- no intentar reidentificar establecimientos o personas;
+- no combinar tablas con la finalidad de inferir información protegida;
+- documentar valores suprimidos o no disponibles;
+- evitar conclusiones sobre negocios individuales;
+- presentar resultados a nivel territorial agregado.
 
-- Separar datos de distintos negocios mediante `business_id` y control lógico de acceso.
-- Evitar subir datos reales al repositorio público.
-- Usar datos sintéticos para demostraciones.
-- Documentar cualquier transformación aplicada a los datos.
-- Eliminar campos de texto libre que puedan contener información sensible.
-- Agregar localización a nivel de municipio o zona, evitando direcciones concretas.
-- Usar métricas agregadas en visualizaciones públicas.
-- Mantener trazabilidad de fuentes y versiones de datasets.
-- Incluir un archivo README o sección de privacidad explicando qué datos se usan y cuáles se han excluido.
+Si posteriormente se incorporaran datos internos de una empresa piloto:
 
-En conclusión, el proyecto puede usarse de forma segura en un contexto académico siempre que se trabaje con datos públicos, sintéticos o correctamente anonimizados, y siempre que los datos reales de clientes se eviten o se traten con garantías suficientes.
+- serían opcionales;
+- se necesitaría autorización expresa;
+- se anonimizarían o agregarían;
+- no se subirían al repositorio público;
+- se usarían únicamente para comprobar si la tendencia territorial se relaciona con la actividad real del negocio.
 
 ---
 
 # 5. Viabilidad inicial del proyecto
 
-El proyecto parece viable desde el punto de vista de los datos, siempre que se acote correctamente el MVP. La idea completa de una suite digital para microempresas puede ser amplia, pero el enfoque propuesto para el curso es realista porque reduce el alcance inicial a un módulo analítico con importación de datos, dashboard, segmentación básica y recomendaciones operativas. Esto permite demostrar valor sin construir una plataforma empresarial completa.
+## 5.1. Viabilidad de obtención de datos
 
-La obtención de datos necesarios también parece viable. Existen datasets públicos transaccionales adecuados para prototipar análisis de ventas y clientes, como Online Retail de UCI, y fuentes oficiales para enriquecer el contexto territorial y sectorial, como INE, Eurostat, datos.gob.es, BOE, AEMET u OpenStreetMap. Estas fuentes permiten avanzar aunque no se consiga inmediatamente una microempresa piloto. La principal limitación es que los datasets públicos no representan exactamente a microempresas rurales españolas, por lo que será necesario adaptar el caso con datos sintéticos realistas y documentar claramente esa decisión.
+La obtención de datos es viable porque el proyecto se apoya en fuentes oficiales españolas de acceso público y actualización periódica. La encuesta de ocupación rural constituye una base directamente relacionada con el sector objetivo. Las fuentes complementarias permiten incorporar precios, gasto y estructura empresarial sin depender de empresas privadas.
 
-La información disponible tiene suficiente calidad para una primera versión del proyecto si se usa con una finalidad adecuada. Los datos transaccionales públicos permiten entrenar y validar técnicas de segmentación, análisis de recurrencia, cálculo de indicadores y visualización. Los datos agregados de INE y Eurostat permiten justificar el contexto, pero no sirven para sustituir datos operativos internos. Por tanto, el proyecto deberá separar claramente los datos de negocio, que alimentan el dashboard y los modelos, de los datos externos, que solo enriquecen o contextualizan.
+La API de Dataestur y las descargas de INEbase permiten construir un pipeline reproducible.
 
-El proyecto puede desarrollarse de forma realista durante el curso si se mantiene la siguiente priorización:
+## 5.2. Calidad, granularidad e histórico
 
-1. Diseñar el modelo de datos común para microempresas.
-2. Crear o adaptar datasets de ejemplo.
-3. Construir un pipeline de limpieza y transformación.
-4. Desarrollar indicadores descriptivos.
-5. Implementar segmentación de clientes y detección de inactividad.
-6. Crear un dashboard o aplicación ligera.
-7. Añadir recomendaciones explicables basadas en reglas y modelos simples.
-8. Documentar privacidad, limitaciones, riesgos y futuras mejoras.
+La información principal presenta:
 
-La parte más arriesgada en este momento es conseguir datos reales de una microempresa con suficiente calidad, histórico y permisos de uso. También existe riesgo de ampliar demasiado el alcance funcional: CRM, tareas, campañas, IA, dashboard, predicción y marca blanca podrían convertirse en un proyecto excesivo si se intentan desarrollar todos al mismo nivel. Para evitarlo, el MVP se centrará en la parte de datos y analítica, dejando la suite completa como visión futura.
+- periodicidad mensual;
+- múltiples variables de oferta y demanda;
+- desglose territorial;
+- histórico suficiente para estacionalidad;
+- documentación metodológica;
+- estabilidad institucional;
+- ausencia de datos personales.
 
-Si la fuente principal de datos reales no funciona, la alternativa será utilizar una combinación de:
+La granularidad no llega necesariamente a cada municipio, pero las zonas y puntos turísticos permiten aproximarse a territorios rurales concretos. El MVP será defendible siempre que se comunique correctamente el nivel geográfico real.
 
-- Dataset Online Retail de UCI para transacciones.
-- Datos sintéticos generados con estructura de microempresa rural.
-- Datos abiertos de INE para contexto municipal y sectorial.
-- Datos de Eurostat u ONTSI para justificar digitalización empresarial.
-- OpenStreetMap para contexto territorial opcional.
-- Calendario de festivos y eventos simulados para estacionalidad.
+## 5.3. Viabilidad técnica
 
-Esta estrategia reduce la dependencia de fuentes privadas y mantiene la continuidad del proyecto para siguientes entregas. Además, permite que el repositorio evolucione con una estructura profesional: datos brutos, datos procesados, scripts de limpieza, notebooks de análisis, modelos, documentación, dashboard y entregas parciales.
+El proyecto puede desarrollarse de forma realista durante el curso mediante esta priorización:
+
+1. Descargar y versionar las tablas principales.
+2. Construir un diccionario de datos.
+3. Normalizar tiempo, territorio y métricas.
+4. Realizar análisis exploratorio y controles de calidad.
+5. Seleccionar una variable objetivo.
+6. Crear un baseline estacional.
+7. Entrenar modelos predictivos.
+8. Validar con separación temporal.
+9. Crear indicadores derivados.
+10. Diseñar reglas de recomendación explicables.
+11. Construir dashboard o aplicación.
+12. Documentar limitaciones y reproducibilidad.
+
+## 5.4. Modelos previstos
+
+Se compararán modelos simples y avanzados.
+
+### Baselines
+
+- Valor del mes anterior.
+- Valor del mismo mes del año anterior.
+- Media móvil.
+- Media histórica del mes.
+
+### Modelos candidatos
+
+- Regresión lineal regularizada.
+- Random Forest.
+- Gradient Boosting.
+- XGBoost o HistGradientBoosting, si el alcance lo permite.
+- Modelos específicos de series temporales, si la estructura de los datos lo justifica.
+
+### Segmentación
+
+- K-Means.
+- Clustering jerárquico.
+- PCA para visualización, si resulta necesario.
+
+### Evaluación
+
+- MAE.
+- RMSE.
+- MAPE o SMAPE cuando sea adecuado.
+- R² como métrica complementaria.
+- Backtesting temporal.
+- Comparación frente al baseline.
+
+El modelo solo se considerará útil si mejora de manera consistente al baseline y mantiene resultados razonables en periodos no vistos.
+
+## 5.5. Recomendaciones previstas
+
+Las recomendaciones serán deterministas y explicables. Ejemplos:
+
+- Si la ocupación prevista supera claramente la media histórica, recomendar refuerzo de capacidad, personal o existencias.
+- Si la ocupación de fin de semana es muy superior a la mensual, concentrar acciones de viernes a domingo.
+- Si la demanda prevista es baja y el territorio depende del turismo nacional, recomendar campañas de escapadas de proximidad.
+- Si aumenta la estancia media, recomendar paquetes conjuntos entre alojamiento, restauración y actividades.
+- Si existe alta demanda y baja densidad de empresas de actividades, señalar una oportunidad relativa para experiencias.
+- Si aumenta el índice de precios sin caída equivalente de demanda, recomendar estrategias de valor añadido en lugar de descuentos indiscriminados.
+- Si el modelo presenta alta incertidumbre, mostrar la recomendación como escenario y no como acción prioritaria.
+
+## 5.6. Principal riesgo
+
+El mayor riesgo es confundir una predicción territorial con una predicción empresarial. La disponibilidad de turistas en una zona no garantiza ventas para todos los negocios. La conversión depende de ubicación, calidad, capacidad, precios, competencia, visibilidad y gestión interna.
+
+La mitigación será:
+
+- separar claramente demanda prevista y oportunidad empresarial;
+- utilizar intervalos de predicción;
+- crear escenarios conservador, central y favorable;
+- no estimar beneficio neto;
+- documentar supuestos;
+- proponer validación futura con negocios reales.
+
+## 5.7. Alternativa si una fuente complementaria no funciona
+
+El proyecto seguirá siendo viable con la fuente principal del INE.
+
+Plan alternativo:
+
+1. Mantener ocupación, viajeros, pernoctaciones, estancia media y capacidad.
+2. Crear predicción y segmentación territorial.
+3. Sustituir estimaciones monetarias por un índice no monetario de oportunidad.
+4. Formular recomendaciones según intensidad turística, estacionalidad y tejido empresarial disponible.
+5. Incorporar gasto o empresas activas únicamente cuando su integración sea metodológicamente válida.
 
 ## Valoración final de viabilidad
 
-La idea es viable, relevante y adecuada para un proyecto de IA y Big Data si se desarrolla con un alcance controlado. El valor académico reside en convertir un problema real de baja digitalización en una solución basada en datos, con un pipeline reproducible, fuentes documentadas, análisis visual, segmentación, recomendaciones y tratamiento responsable de la privacidad. El proyecto no dependerá de construir una suite empresarial completa, sino de demostrar que una microempresa puede obtener decisiones útiles a partir de datos simples, bien estructurados y presentados de forma comprensible.
+La idea es viable y defendible porque:
 
-El MVP final será suficientemente realista para el curso y suficientemente extensible para futuras entregas, ya que podrá evolucionar hacia modelos predictivos más avanzados, versiones sectorizadas, integración con herramientas externas, automatización de campañas, despliegue en la nube o arquitectura multiempresa de marca blanca.
+- se acota a un sector concreto;
+- utiliza datos oficiales españoles directamente relacionados con el entorno de aplicación;
+- evita depender de datos privados;
+- dispone de suficiente profundidad temporal;
+- permite análisis descriptivo, predicción, segmentación y visualización;
+- tiene utilidad para alojamientos y otros negocios rurales;
+- reconoce explícitamente sus límites.
+
+El proyecto final no afirmará que predice la facturación exacta de una microempresa. Su aportación será demostrar que los datos oficiales de turismo rural pueden convertirse en un sistema de anticipación de demanda y apoyo a decisiones para el ecosistema económico de territorios rurales.
+
+---
+
+# 6. Fuentes oficiales de referencia
+
+- [Instituto Nacional de Estadística — Alojamientos de turismo rural](https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176963&idp=1254735576863&menu=ultiDatos)
+- [Instituto Nacional de Estadística — Resultados de ocupación rural](https://www.ine.es/dyngs/INEbase/operacion.htm?c=Estadistica_C&cid=1254736176963&idp=1254735576863&menu=resultados)
+- [Dataestur — Ocupación en alojamientos de turismo rural](https://www.dataestur.es/alojamientos/encuesta-ocupacion-turismo-rural/)
+- [Dataestur — Turismo de los residentes](https://www.dataestur.es/viajes-ocio/turismo-residente-etr/)
+- [Dataestur — Gasto turístico de visitantes internacionales](https://www.dataestur.es/economia/gasto-turistico-visitantes-egatur/)
+- [Dataestur — Empresas activas en turismo](https://www.dataestur.es/economia/empresas-activas-asociadas-a-la-actividad-turistica/)
+- [Dataestur — API de datos turísticos](https://www.dataestur.es/apidata/)
