@@ -155,15 +155,24 @@ La estructura prevista del repositorio será:
 
 ```text
 project-root/
+├── app/
+│   └── .gitkeep
 ├── data/
 │   ├── raw/
 │   │   ├── ine_ocupacion_rural/
+│   │   │   └── .gitkeep
 │   │   ├── ine_precios_rurales/
+│   │   │   └── .gitkeep
 │   │   ├── dataestur_etr/
+│   │   │   └── .gitkeep
 │   │   ├── dataestur_egatur/
+│   │   │   └── .gitkeep
 │   │   ├── dataestur_empresas_turisticas/
+│   │   │   └── .gitkeep
 │   │   └── external_optional/
+│   │       └── .gitkeep
 │   ├── processed/
+│   │   ├── .gitkeep
 │   │   ├── processed_ocupacion_rural_monthly.parquet
 │   │   ├── processed_precios_rurales_monthly.parquet
 │   │   ├── processed_etr_residentes.parquet
@@ -173,12 +182,15 @@ project-root/
 │   │   ├── dim_territory.parquet
 │   │   └── dim_business_activity_mapping.parquet
 │   ├── gold/
+│   │   ├── .gitkeep
 │   │   ├── gold_tourism_demand_monthly.parquet
 │   │   ├── gold_modeling_dataset_monthly.parquet
 │   │   ├── gold_business_context_annual.parquet
 │   │   ├── gold_business_opportunity_monthly.parquet
 │   │   └── exports_csv/
+│   │       └── .gitkeep
 │   └── metadata/
+│       ├── .gitkeep
 │       ├── data_sources.yml
 │       ├── download_log.csv
 │       ├── data_quality_report.md
@@ -190,23 +202,33 @@ project-root/
 │       ├── 02_datos_necesarios.md
 │       └── 03_modelo_datos.md
 ├── notebooks/
+│   ├── 00_exploracion_inicial.ipynb
 │   ├── 01_data_exploration.ipynb
 │   ├── 02_quality_checks.ipynb
 │   ├── 03_modeling_baseline.ipynb
 │   └── 04_dashboard_prototype.ipynb
+├── reports/
+│   └── figures/
+│       └── .gitkeep
 ├── src/
 │   ├── data/
+│   │   ├── .gitkeep
 │   │   ├── download_sources.py
 │   │   ├── normalize_sources.py
 │   │   ├── build_gold.py
 │   │   └── validate_gold.py
 │   ├── features/
+│   │   ├── .gitkeep
 │   │   └── build_features.py
 │   ├── models/
+│   │   ├── .gitkeep
 │   │   └── train_baselines.py
 │   └── visualization/
+│       ├── .gitkeep
 │       └── dashboard.py
-└── README.md
+├── .gitignore
+├── README.md
+└── requirements.txt
 ```
 
 Esta estructura separa claramente datos originales, datos transformados, datasets finales y documentación. También permite que el repositorio conserve la trazabilidad entre fuentes, scripts y entregables.
