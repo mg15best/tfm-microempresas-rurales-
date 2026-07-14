@@ -1,0 +1,371 @@
+project:
+  name: "Sistema de analítica predictiva de demanda turística rural"
+  data_domain: "Turismo rural en España"
+  target_granularity: "territory_month"
+  target_variable: "overnight_stays"
+  source_policy: "official_spanish_sources_only"
+  last_source_review: "2026-07-14"
+
+source_groups:
+
+  rural_occupancy:
+
+    - source_id: "ine_eotr_demand_province"
+      source_name: "Viajeros y pernoctaciones por provincias"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Encuesta de Ocupación en Alojamientos de Turismo Rural"
+      source_type: "official_statistical_table"
+      priority: "mandatory"
+      enabled: true
+
+      table_id: 2073
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=2073"
+
+      frequency: "monthly"
+      territory_level: "province"
+      historical_start: "2005-01"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "province"
+        - "metric"
+        - "residence"
+        - "period"
+
+      metrics:
+        - "travellers"
+        - "overnight_stays"
+
+      residence_categories:
+        - "residents_in_spain"
+        - "residents_abroad"
+
+      raw_directory: "data/raw/ine_ocupacion_rural"
+      raw_filename_prefix: "ine_2073_demand_province"
+      processed_output: "data/processed/processed_ocupacion_rural_demand_province_monthly.parquet"
+
+      intended_use:
+        - "main_tourism_demand_source"
+        - "target_variable"
+        - "domestic_foreign_demand_analysis"
+
+      limitations:
+        - "Data from June 2025 onwards may be provisional."
+        - "Changes in establishment directories can affect comparability between years."
+        - "Some provincial data from the COVID-19 period do not meet the usual publication quality standard."
+        - "Provincial totals must not be added to autonomous-community or national totals."
+
+    - source_id: "ine_eotr_supply_province"
+      source_name: "Establecimientos, plazas, grados de ocupación y personal empleado por provincias"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Encuesta de Ocupación en Alojamientos de Turismo Rural"
+      source_type: "official_statistical_table"
+      priority: "mandatory"
+      enabled: true
+
+      table_id: 2070
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=2070"
+
+      frequency: "monthly"
+      territory_level: "province"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "province"
+        - "metric"
+        - "period"
+
+      metrics:
+        - "estimated_open_establishments"
+        - "estimated_bed_places"
+        - "occupancy_rate_by_bed_places"
+        - "occupancy_rate_by_rooms"
+        - "weekend_occupancy_rate_by_bed_places"
+        - "employed_personnel"
+
+      raw_directory: "data/raw/ine_ocupacion_rural"
+      raw_filename_prefix: "ine_2070_supply_province"
+      processed_output: "data/processed/processed_ocupacion_rural_supply_province_monthly.parquet"
+
+      intended_use:
+        - "tourism_supply"
+        - "occupancy_analysis"
+        - "capacity_context"
+        - "employment_context"
+
+      limitations:
+        - "Published percentages must be stored on a 0-100 scale."
+        - "Estimated establishments and bed places are not business-register counts."
+        - "Provincial totals must not be mixed with other territorial levels."
+
+    - source_id: "ine_eotr_demand_autonomous_community"
+      source_name: "Viajeros y pernoctaciones por comunidades y ciudades autónomas"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Encuesta de Ocupación en Alojamientos de Turismo Rural"
+      source_type: "official_statistical_table"
+      priority: "backup"
+      enabled: true
+
+      table_id: 1995
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=1995"
+
+      frequency: "monthly"
+      territory_level: "autonomous_community"
+      historical_start: "2001-01"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "autonomous_community"
+        - "metric"
+        - "residence"
+        - "period"
+
+      metrics:
+        - "travellers"
+        - "overnight_stays"
+
+      raw_directory: "data/raw/ine_ocupacion_rural"
+      raw_filename_prefix: "ine_1995_demand_autonomous_community"
+      processed_output: "data/processed/processed_ocupacion_rural_demand_ccaa_monthly.parquet"
+
+      intended_use:
+        - "quality_validation"
+        - "fallback_territorial_level"
+        - "long_historical_series"
+
+      limitations:
+        - "Autonomous-community values must not be presented as provincial values."
+        - "Changes in establishment directories can affect comparability."
+
+    - source_id: "ine_eotr_supply_autonomous_community"
+      source_name: "Establecimientos, plazas, grados de ocupación y personal empleado por comunidades y ciudades autónomas"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Encuesta de Ocupación en Alojamientos de Turismo Rural"
+      source_type: "official_statistical_table"
+      priority: "backup"
+      enabled: true
+
+      table_id: 2046
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=2046"
+
+      frequency: "monthly"
+      territory_level: "autonomous_community"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "autonomous_community"
+        - "metric"
+        - "period"
+
+      metrics:
+        - "estimated_open_establishments"
+        - "estimated_bed_places"
+        - "occupancy_rate_by_bed_places"
+        - "occupancy_rate_by_rooms"
+        - "weekend_occupancy_rate_by_bed_places"
+        - "employed_personnel"
+
+      raw_directory: "data/raw/ine_ocupacion_rural"
+      raw_filename_prefix: "ine_2046_supply_autonomous_community"
+      processed_output: "data/processed/processed_ocupacion_rural_supply_ccaa_monthly.parquet"
+
+      intended_use:
+        - "quality_validation"
+        - "fallback_territorial_level"
+
+  rural_prices:
+
+    - source_id: "ine_iptr_autonomous_community"
+      source_name: "Índices y tasas de variación interanual por comunidades autónomas"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Índice de Precios de Alojamientos de Turismo Rural"
+      source_type: "official_statistical_table"
+      priority: "complementary"
+      enabled: true
+
+      table_id: 2060
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=2060"
+
+      frequency: "monthly"
+      territory_level: "autonomous_community"
+      historical_start: "2011-01"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "autonomous_community"
+        - "data_type"
+        - "period"
+
+      metrics:
+        - "price_index"
+        - "year_on_year_change_rate"
+
+      raw_directory: "data/raw/ine_precios_rurales"
+      raw_filename_prefix: "ine_2060_iptr_autonomous_community"
+      processed_output: "data/processed/processed_precios_rurales_monthly.parquet"
+
+      intended_use:
+        - "price_context"
+        - "descriptive_analysis"
+        - "optional_model_feature"
+
+      limitations:
+        - "The index is not a real accommodation price in euros."
+        - "The source is autonomous-community level and must not be presented as provincial data."
+        - "Price data may only be joined to provinces through an explicitly documented parent-territory relationship."
+
+  resident_tourism:
+
+    - source_id: "ine_etr_resident_tourism"
+      source_name: "Encuesta de Turismo de Residentes"
+      provider: "Instituto Nacional de Estadística"
+      source_type: "official_statistical_operation"
+      priority: "contextual"
+      enabled: false
+
+      operation_page: "https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176990&idp=1254735576863&menu=resultados"
+
+      frequency: "quarterly_and_annual_publication"
+      reference_period: "month"
+      territory_level: "published_destination_level"
+
+      possible_metrics:
+        - "trips"
+        - "overnight_stays"
+        - "average_duration"
+        - "total_expenditure"
+        - "average_expenditure"
+
+      raw_directory: "data/raw/dataestur_etr"
+      raw_filename_prefix: "ine_etr_resident_tourism"
+      processed_output: "data/processed/processed_etr_residentes.parquet"
+
+      intended_use:
+        - "contextual_analysis"
+        - "resident_demand_profile"
+        - "scenario_weighting"
+
+      limitations:
+        - "Publication frequency is not directly compatible with the monthly provincial modeling table."
+        - "Expenditure must not be assigned directly to individual rural businesses."
+        - "This source is not required for the minimum viable model."
+
+  international_tourism_expenditure:
+
+    - source_id: "ine_egatur_destination_autonomous_community"
+      source_name: "Gasto de los turistas internacionales según comunidad autónoma de destino principal"
+      provider: "Instituto Nacional de Estadística"
+      statistical_operation: "Encuesta de Gasto Turístico"
+      source_type: "official_statistical_table"
+      priority: "contextual"
+      enabled: false
+
+      table_id: 10839
+      landing_page: "https://www.ine.es/jaxiT3/Tabla.htm?t=10839"
+
+      frequency: "monthly"
+      territory_level: "selected_autonomous_communities"
+      historical_start: "2015-10"
+      publication_status: "includes_provisional_data"
+
+      dimensions:
+        - "destination_autonomous_community"
+        - "expenditure_metric"
+        - "data_type"
+        - "period"
+
+      metrics:
+        - "total_expenditure"
+        - "average_expenditure_per_person"
+        - "average_daily_expenditure_per_person"
+        - "average_trip_duration"
+
+      raw_directory: "data/raw/dataestur_egatur"
+      raw_filename_prefix: "ine_10839_egatur_destination"
+      processed_output: "data/processed/processed_egatur_monthly.parquet"
+
+      intended_use:
+        - "international_demand_context"
+        - "descriptive_analysis"
+
+      limitations:
+        - "Monthly data identifies only the principal destination communities and groups the remainder as Other Autonomous Communities."
+        - "Values must not be distributed artificially among provinces."
+        - "Expenditure is not equivalent to revenue for local businesses."
+        - "This source is not required for the minimum viable model."
+
+  tourism_businesses:
+
+    - source_id: "dataestur_active_tourism_businesses"
+      source_name: "Empresas activas asociadas a la actividad turística"
+      provider: "Dataestur / SEGITTUR"
+      primary_origin: "Instituto Nacional de Estadística - DIRCE"
+      source_type: "official_aggregated_exploitation"
+      priority: "contextual"
+      enabled: false
+
+      landing_page: "https://www.dataestur.es/economia/empresas-activas-asociadas-a-la-actividad-turistica/"
+      api_catalogue: "https://www.dataestur.es/apidata/"
+
+      frequency: "annual"
+      reference_date: "1 January of each year"
+      territory_level: "to_be_verified_in_download"
+
+      activity_groups:
+        - "accommodation"
+        - "food_and_beverage_services"
+        - "transport"
+        - "travel_agencies"
+        - "other_tourism_related_activities"
+
+      raw_directory: "data/raw/dataestur_empresas_turisticas"
+      raw_filename_prefix: "dataestur_active_tourism_businesses"
+      processed_output: "data/processed/processed_empresas_turisticas_annual.parquet"
+
+      intended_use:
+        - "business_density"
+        - "tourism_business_context"
+        - "demand_per_business_ratios"
+
+      limitations:
+        - "The exact territorial granularity must be verified before integration."
+        - "Data referring to 1 January 2023 are not directly comparable with previous years."
+        - "Annual values must not be treated as monthly observations."
+        - "This source is not required for the minimum viable model."
+
+  optional_external:
+
+    - source_id: "aemet_climate"
+      source_name: "AEMET OpenData"
+      provider: "Agencia Estatal de Meteorología"
+      source_type: "official_rest_api"
+      priority: "optional"
+      enabled: false
+
+      landing_page: "https://opendata.aemet.es/"
+      api_documentation: "https://opendata.aemet.es/dist/index.html"
+
+      frequency: "variable"
+      territory_level: "meteorological_station"
+
+      possible_metrics:
+        - "temperature"
+        - "precipitation"
+        - "wind"
+        - "climatological_normals"
+
+      raw_directory: "data/raw/external_optional"
+      raw_filename_prefix: "aemet_climate"
+
+      intended_use:
+        - "optional_weather_features"
+        - "interpretation_of_demand_variation"
+
+      requirements:
+        - "AEMET API key"
+        - "Station-to-territory mapping"
+
+      limitations:
+        - "Meteorological stations do not map directly to administrative territories."
+        - "Automated access requires an API key."
+        - "This source will only be integrated if the core model is already complete."
