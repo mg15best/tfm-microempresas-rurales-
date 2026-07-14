@@ -1,0 +1,169 @@
+dataset:
+  name: "gold_tourism_demand_monthly"
+  path: "data/gold/gold_tourism_demand_monthly.parquet"
+  report_path: "data/metadata/data_quality_report.md"
+
+  territory_dimension_path: "data/processed/dim_territory.parquet"
+  calendar_dimension_path: "data/processed/dim_calendar_month.parquet"
+
+  key_columns:
+    - "territory_id"
+    - "month_id"
+
+  expected_territory_count: 50
+  minimum_start_month: "2005-01-01"
+  provisional_from: "2025-06-01"
+
+  allowed_missing_global_months:
+    - "2020-04"
+    - "2020-05"
+    - "2020-11"
+
+  required_columns:
+    - "territory_id"
+    - "source_territory_code"
+    - "source_territory_name"
+    - "territory_name"
+    - "territory_level"
+    - "autonomous_community_id"
+    - "autonomous_community_name"
+    - "province_id"
+    - "coverage_quality"
+    - "month_id"
+    - "date_month"
+    - "year"
+    - "month"
+    - "month_name"
+    - "quarter"
+    - "season"
+    - "is_summer"
+    - "is_christmas_period"
+    - "is_easter_period"
+    - "covid_period"
+    - "complete_month_available"
+    - "travellers_total"
+    - "travellers_domestic"
+    - "travellers_foreign"
+    - "overnight_stays_total"
+    - "overnight_stays_domestic"
+    - "overnight_stays_foreign"
+    - "average_stay"
+    - "establishments_estimated"
+    - "places_estimated"
+    - "occupancy_rate_pct"
+    - "weekend_occupancy_rate_pct"
+    - "room_occupancy_rate_pct"
+    - "staff_employed"
+    - "domestic_travellers_share"
+    - "foreign_travellers_share"
+    - "domestic_overnight_stays_share"
+    - "foreign_overnight_stays_share"
+    - "overnight_stays_per_place"
+    - "travellers_per_establishment"
+    - "weekend_dependence_index"
+    - "overnight_stays_mom_change_pct"
+    - "overnight_stays_yoy_change_pct"
+    - "seasonality_index"
+    - "tourism_pressure_index"
+    - "price_index"
+    - "price_yoy_change_pct"
+    - "resident_avg_spend_context"
+    - "foreign_avg_spend_context"
+    - "demand_source_frequency"
+    - "price_source_frequency"
+    - "price_territory_level"
+    - "spend_context_frequency"
+    - "spend_context_territory_level"
+    - "business_context_frequency"
+    - "business_context_territory_level"
+    - "data_status"
+    - "is_provisional"
+    - "demand_snapshot_id"
+    - "supply_snapshot_id"
+    - "source_snapshot_id"
+    - "pipeline_run_id"
+    - "data_version"
+    - "created_at"
+
+validation:
+
+  non_negative_columns:
+    - "travellers_total"
+    - "travellers_domestic"
+    - "travellers_foreign"
+    - "overnight_stays_total"
+    - "overnight_stays_domestic"
+    - "overnight_stays_foreign"
+    - "average_stay"
+    - "establishments_estimated"
+    - "places_estimated"
+    - "staff_employed"
+    - "overnight_stays_per_place"
+    - "travellers_per_establishment"
+
+  percentage_columns_0_100:
+    - "occupancy_rate_pct"
+    - "weekend_occupancy_rate_pct"
+    - "room_occupancy_rate_pct"
+    - "seasonality_index"
+    - "tourism_pressure_index"
+
+  share_columns_0_1:
+    - "domestic_travellers_share"
+    - "foreign_travellers_share"
+    - "domestic_overnight_stays_share"
+    - "foreign_overnight_stays_share"
+
+  share_pairs:
+    - name: "traveller_shares"
+      first: "domestic_travellers_share"
+      second: "foreign_travellers_share"
+
+    - name: "overnight_stay_shares"
+      first: "domestic_overnight_stays_share"
+      second: "foreign_overnight_stays_share"
+
+  total_rules:
+    - name: "travellers_total"
+      total: "travellers_total"
+      components:
+        - "travellers_domestic"
+        - "travellers_foreign"
+
+    - name: "overnight_stays_total"
+      total: "overnight_stays_total"
+      components:
+        - "overnight_stays_domestic"
+        - "overnight_stays_foreign"
+
+  unique_per_pipeline_columns:
+    - "source_snapshot_id"
+    - "pipeline_run_id"
+    - "data_version"
+
+  context_columns_expected_null:
+    - "price_index"
+    - "price_yoy_change_pct"
+    - "resident_avg_spend_context"
+    - "foreign_avg_spend_context"
+    - "price_source_frequency"
+    - "price_territory_level"
+    - "spend_context_frequency"
+    - "spend_context_territory_level"
+    - "business_context_frequency"
+    - "business_context_territory_level"
+
+  missingness_report_columns:
+    - "travellers_total"
+    - "overnight_stays_total"
+    - "average_stay"
+    - "establishments_estimated"
+    - "places_estimated"
+    - "occupancy_rate_pct"
+    - "weekend_occupancy_rate_pct"
+    - "room_occupancy_rate_pct"
+    - "staff_employed"
+    - "overnight_stays_yoy_change_pct"
+    - "tourism_pressure_index"
+
+  numeric_tolerance: 0.000001
