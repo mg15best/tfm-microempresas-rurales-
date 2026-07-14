@@ -1,17 +1,21 @@
 """
 Descarga reproducible de fuentes oficiales del proyecto.
 
-Fase 4:
-- Descarga la tabla 2073 del INE.
-- Conserva el CSV original sin transformaciones.
-- Calcula el hash SHA-256 del fichero.
-- Registra la descarga en data/metadata/download_log.csv.
+Fuentes disponibles:
+- Tabla INE 2073: viajeros y pernoctaciones por provincias.
+- Tabla INE 2070: establecimientos, plazas, ocupación y personal
+  empleado por provincias.
 
-Este script utiliza únicamente librerías incluidas en Python.
+El script:
+- conserva los CSV originales sin transformaciones;
+- valida mínimamente cada descarga;
+- calcula el hash SHA-256;
+- registra cada ejecución en data/metadata/download_log.csv.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
@@ -26,24 +30,33 @@ from urllib.request import Request, urlopen
 
 
 # ---------------------------------------------------------------------
-# Rutas generales del proyecto
+# Rutas del proyecto
 # ---------------------------------------------------------------------
 
-# El script está en project-root/src/data/download_sources.py.
-# Por eso parents[2] corresponde a la raíz del repositorio.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-RAW_DIRECTORY = PROJECT_ROOT / "data" / "raw" / "ine_ocupacion_rural"
-DOWNLOAD_LOG_PATH = PROJECT_ROOT / "data" / "metadata" / "download_log.csv"
+RAW_DIRECTORY = (
+    PROJECT_ROOT
+    / "data"
+    / "raw"
+    / "ine_ocupacion_rural"
+)
+
+DOWNLOAD_LOG_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "download_log.csv"
+)
 
 
 # ---------------------------------------------------------------------
-# Configuración de la fuente
+# Configuración de las fuentes
 # ---------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class SourceConfig:
-    """Configuración mínima de una fuente descargable."""
+    """Configuración de una fuente oficial descargable."""
 
     source_id: str
     source_name: str
@@ -56,25 +69,49 @@ class SourceConfig:
     notes: str
 
 
-SOURCE = SourceConfig(
-    source_id="ine_eotr_demand_province",
-    source_name="Viajeros y pernoctaciones por provincias",
-    provider="Instituto Nacional de Estadística",
-    table_id=2073,
-    url="https://www.ine.es/jaxiT3/files/t/csv_bdsc/2073.csv",
-    file_format="csv",
-    filename_label="ine_2073_demand_province",
-    parameters={
-        "table_id": 2073,
-        "separator": "semicolon",
-        "language": "es",
-        "download_scope": "complete_table",
-    },
-    notes=(
-        "Fichero raw descargado sin transformaciones desde la "
-        "distribución CSV oficial del INE."
+SOURCES: dict[str, SourceConfig] = {
+    "2073": SourceConfig(
+        source_id="ine_eotr_demand_province",
+        source_name="Viajeros y pernoctaciones por provincias",
+        provider="Instituto Nacional de Estadística",
+        table_id=2073,
+        url="https://www.ine.es/jaxiT3/files/t/csv_bdsc/2073.csv",
+        file_format="csv",
+        filename_label="ine_2073_demand_province",
+        parameters={
+            "table_id": 2073,
+            "separator": "semicolon",
+            "language": "es",
+            "download_scope": "complete_table",
+        },
+        notes=(
+            "CSV raw de demanda turística rural provincial "
+            "descargado sin transformaciones."
+        ),
     ),
-)
+    "2070": SourceConfig(
+        source_id="ine_eotr_supply_province",
+        source_name=(
+            "Establecimientos, plazas, grados de ocupación "
+            "y personal empleado por provincias"
+        ),
+        provider="Instituto Nacional de Estadística",
+        table_id=2070,
+        url="https://www.ine.es/jaxiT3/files/t/csv_bdsc/2070.csv",
+        file_format="csv",
+        filename_label="ine_2070_supply_province",
+        parameters={
+            "table_id": 2070,
+            "separator": "semicolon",
+            "language": "es",
+            "download_scope": "complete_table",
+        },
+        notes=(
+            "CSV raw de oferta, ocupación y empleo turístico rural "
+            "provincial descargado sin transformaciones."
+        ),
+    ),
+}
 
 
 # ---------------------------------------------------------------------
@@ -82,12 +119,8 @@ SOURCE = SourceConfig(
 # ---------------------------------------------------------------------
 
 def calculate_sha256(file_path: Path) -> str:
-    """
-    Calcula el hash SHA-256 de un fichero.
+    """Calcula el hash SHA-256 de un fichero."""
 
-    El hash funciona como una huella digital:
-    si el contenido cambia, el hash también cambia.
-    """
     sha256 = hashlib.sha256()
 
     with file_path.open("rb") as file:
@@ -99,20 +132,20 @@ def calculate_sha256(file_path: Path) -> str:
 
 def validate_downloaded_file(file_path: Path) -> None:
     """
-    Aplica comprobaciones mínimas al fichero descargado.
+    Comprueba que el fichero descargado parece un CSV válido.
 
-    No modifica ni interpreta todavía los datos.
-    Solo comprueba que parece un CSV y no una página de error HTML.
+    Esta validación no modifica los datos.
     """
+
     file_size = file_path.stat().st_size
 
     if file_size < 500:
         raise ValueError(
-            f"El fichero descargado es demasiado pequeño: {file_size} bytes."
+            f"El fichero es demasiado pequeño: {file_size} bytes."
         )
 
     with file_path.open("rb") as file:
-        sample = file.read(2048)
+        sample = file.read(4096)
 
     normalized_sample = sample.lstrip().lower()
 
@@ -126,7 +159,7 @@ def validate_downloaded_file(file_path: Path) -> None:
 
     if b";" not in sample:
         raise ValueError(
-            "No se ha detectado el separador ';' esperado en el CSV."
+            "No se ha detectado el separador ';' esperado."
         )
 
 
@@ -136,25 +169,29 @@ def append_download_log(
     http_status: int,
     content_type: str,
 ) -> None:
-    """
-    Añade una fila al registro histórico de descargas.
+    """Añade una fila al registro histórico de descargas."""
 
-    Si download_log.csv no existe, crea primero su cabecera.
-    """
-    DOWNLOAD_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DOWNLOAD_LOG_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     file_exists = (
         DOWNLOAD_LOG_PATH.exists()
         and DOWNLOAD_LOG_PATH.stat().st_size > 0
     )
 
-    relative_path = raw_file_path.relative_to(PROJECT_ROOT).as_posix()
-    file_hash = calculate_sha256(raw_file_path)
-    file_size = raw_file_path.stat().st_size
+    relative_path = (
+        raw_file_path
+        .relative_to(PROJECT_ROOT)
+        .as_posix()
+    )
 
     log_row = {
         "download_id": str(uuid.uuid4()),
-        "download_date": datetime.now(timezone.utc).isoformat(),
+        "download_date": datetime.now(
+            timezone.utc
+        ).isoformat(),
         "source_id": source.source_id,
         "source_name": source.source_name,
         "provider": source.provider,
@@ -168,8 +205,8 @@ def append_download_log(
         ),
         "http_status": http_status,
         "content_type": content_type,
-        "file_size_bytes": file_size,
-        "file_hash": file_hash,
+        "file_size_bytes": raw_file_path.stat().st_size,
+        "file_hash": calculate_sha256(raw_file_path),
         "notes": source.notes,
     }
 
@@ -180,7 +217,10 @@ def append_download_log(
         encoding="utf-8",
         newline="",
     ) as log_file:
-        writer = csv.DictWriter(log_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(
+            log_file,
+            fieldnames=fieldnames,
+        )
 
         if not file_exists:
             writer.writeheader()
@@ -189,16 +229,21 @@ def append_download_log(
 
 
 def download_source(source: SourceConfig) -> Path:
-    """
-    Descarga una fuente y devuelve la ruta del fichero generado.
+    """Descarga una fuente oficial y devuelve su ruta local."""
 
-    La descarga se guarda primero como archivo temporal .part.
-    Solo se renombra como CSV cuando supera las validaciones mínimas.
-    """
-    RAW_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    RAW_DIRECTORY.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"{timestamp}_{source.filename_label}.csv"
+    timestamp = datetime.now(
+        timezone.utc
+    ).strftime("%Y%m%dT%H%M%SZ")
+
+    filename = (
+        f"{timestamp}_"
+        f"{source.filename_label}.csv"
+    )
 
     final_path = RAW_DIRECTORY / filename
     temporary_path = RAW_DIRECTORY / f"{filename}.part"
@@ -210,13 +255,21 @@ def download_source(source: SourceConfig) -> Path:
                 "tfm-microempresas-rurales/1.0 "
                 "(academic data project)"
             ),
-            "Accept": "text/csv,*/*",
+            "Accept": "text/csv,text/plain,*/*",
         },
     )
 
     try:
-        with urlopen(request, timeout=120) as response:
-            http_status = getattr(response, "status", 200)
+        with urlopen(
+            request,
+            timeout=120,
+        ) as response:
+            http_status = getattr(
+                response,
+                "status",
+                200,
+            )
+
             content_type = response.headers.get(
                 "Content-Type",
                 "not_provided",
@@ -224,15 +277,18 @@ def download_source(source: SourceConfig) -> Path:
 
             if http_status != 200:
                 raise RuntimeError(
-                    f"El servidor devolvió el estado HTTP {http_status}."
+                    "El servidor devolvió el estado "
+                    f"HTTP {http_status}."
                 )
 
             with temporary_path.open("wb") as output_file:
-                shutil.copyfileobj(response, output_file)
+                shutil.copyfileobj(
+                    response,
+                    output_file,
+                )
 
         validate_downloaded_file(temporary_path)
 
-        # El fichero temporal pasa a ser el fichero raw definitivo.
         temporary_path.replace(final_path)
 
         append_download_log(
@@ -242,8 +298,6 @@ def download_source(source: SourceConfig) -> Path:
             content_type=content_type,
         )
 
-        # Ya no es necesario conservar .gitkeep porque la carpeta
-        # contiene un fichero real.
         gitkeep_path = RAW_DIRECTORY / ".gitkeep"
 
         if gitkeep_path.exists():
@@ -251,10 +305,16 @@ def download_source(source: SourceConfig) -> Path:
 
         return final_path
 
-    except (HTTPError, URLError, TimeoutError) as error:
+    except (
+        HTTPError,
+        URLError,
+        TimeoutError,
+    ) as error:
         temporary_path.unlink(missing_ok=True)
+
         raise RuntimeError(
-            f"No se pudo conectar con la fuente oficial: {error}"
+            "No se pudo conectar con la fuente oficial: "
+            f"{error}"
         ) from error
 
     except Exception:
@@ -262,39 +322,114 @@ def download_source(source: SourceConfig) -> Path:
         raise
 
 
+def print_download_result(
+    source: SourceConfig,
+    downloaded_path: Path,
+) -> None:
+    """Muestra un resumen de una descarga correcta."""
+
+    relative_path = (
+        downloaded_path
+        .relative_to(PROJECT_ROOT)
+        .as_posix()
+    )
+
+    print(f"[OK] Tabla INE: {source.table_id}")
+    print(f"[OK] Fichero: {relative_path}")
+    print(
+        "[OK] Tamaño: "
+        f"{downloaded_path.stat().st_size:,} bytes"
+    )
+    print(
+        "[OK] SHA-256: "
+        f"{calculate_sha256(downloaded_path)}"
+    )
+    print()
+
+
+# ---------------------------------------------------------------------
+# Argumentos de terminal
+# ---------------------------------------------------------------------
+
+def parse_arguments() -> argparse.Namespace:
+    """Lee la fuente solicitada desde la terminal."""
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Descarga fuentes oficiales de turismo rural."
+        )
+    )
+
+    parser.add_argument(
+        "--source",
+        choices=["2073", "2070", "all"],
+        default="all",
+        help=(
+            "Tabla que se desea descargar. "
+            "Opciones: 2073, 2070 o all."
+        ),
+    )
+
+    return parser.parse_args()
+
+
 # ---------------------------------------------------------------------
 # Ejecución principal
 # ---------------------------------------------------------------------
 
 def main() -> int:
-    """Ejecuta la descarga de la tabla 2073 del INE."""
+    """Ejecuta una o varias descargas."""
+
+    arguments = parse_arguments()
+
+    if arguments.source == "all":
+        selected_sources = list(SOURCES.values())
+    else:
+        selected_sources = [
+            SOURCES[arguments.source]
+        ]
+
     print("=" * 70)
     print("DESCARGA DE DATOS RAW")
     print("=" * 70)
-    print(f"Fuente: {SOURCE.source_name}")
-    print(f"Proveedor: {SOURCE.provider}")
-    print(f"Tabla INE: {SOURCE.table_id}")
+    print(
+        f"Fuentes seleccionadas: "
+        f"{len(selected_sources)}"
+    )
     print()
 
     try:
-        downloaded_path = download_source(SOURCE)
-        file_hash = calculate_sha256(downloaded_path)
+        for source in selected_sources:
+            print(
+                f"Descargando tabla {source.table_id}: "
+                f"{source.source_name}"
+            )
 
-        print("[OK] Descarga completada.")
-        print(
-            "[OK] Fichero: "
-            f"{downloaded_path.relative_to(PROJECT_ROOT).as_posix()}"
+            downloaded_path = download_source(source)
+
+            print_download_result(
+                source,
+                downloaded_path,
+            )
+
+        log_relative_path = (
+            DOWNLOAD_LOG_PATH
+            .relative_to(PROJECT_ROOT)
+            .as_posix()
         )
-        print(f"[OK] Tamaño: {downloaded_path.stat().st_size:,} bytes")
-        print(f"[OK] SHA-256: {file_hash}")
+
         print(
-            "[OK] Registro: "
-            f"{DOWNLOAD_LOG_PATH.relative_to(PROJECT_ROOT).as_posix()}"
+            "[OK] Registro actualizado: "
+            f"{log_relative_path}"
         )
+
         return 0
 
     except Exception as error:
-        print(f"[ERROR] {error}", file=sys.stderr)
+        print(
+            f"[ERROR] {error}",
+            file=sys.stderr,
+        )
         return 1
 
 
