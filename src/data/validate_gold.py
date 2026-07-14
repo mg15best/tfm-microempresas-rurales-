@@ -39,6 +39,13 @@ RULES_PATH = (
     / "validation_rules.yml"
 )
 
+SCHEMA_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "schema_gold.yml"
+)
+
 
 # ---------------------------------------------------------------------
 # Carga de configuración
@@ -67,6 +74,68 @@ def load_rules() -> dict[str, Any]:
 
     return rules
 
+def load_schema() -> dict[str, Any]:
+    """Carga el contrato formal de la tabla gold."""
+
+    if not SCHEMA_PATH.exists():
+        raise FileNotFoundError(
+            "No se encontró el contrato gold: "
+            f"{SCHEMA_PATH.relative_to(PROJECT_ROOT)}"
+        )
+
+    with SCHEMA_PATH.open(
+        mode="r",
+        encoding="utf-8",
+    ) as file:
+        schema = yaml.safe_load(file)
+
+    if not isinstance(schema, dict):
+        raise ValueError(
+            "schema_gold.yml no contiene una estructura YAML válida."
+        )
+
+    if "dataset" not in schema or "columns" not in schema:
+        raise ValueError(
+            "schema_gold.yml debe contener los bloques "
+            "'dataset' y 'columns'."
+        )
+
+    return schema
+
+def normalize_dtype_name(dtype: object) -> str:
+    """
+    Normaliza la representación de tipos de pandas.
+
+    Pandas y PyArrow pueden representar el mismo tipo lógico con
+    nombres diferentes según la versión instalada. Por ejemplo:
+
+    - string[python], string[pyarrow] o str -> string
+    - datetime64[us] o datetime64[ms] -> datetime64[ns]
+    - datetime64[us, UTC] -> datetime64[ns, UTC]
+    """
+
+    dtype_name = str(dtype)
+
+    if (
+        dtype_name == "str"
+        or dtype_name == "object"
+        or dtype_name.startswith("string")
+    ):
+        return "string"
+
+    if dtype_name.startswith("datetime64["):
+        if "," in dtype_name:
+            timezone = (
+                dtype_name
+                .split(",", maxsplit=1)[1]
+                .rstrip("]")
+                .strip()
+            )
+            return f"datetime64[ns, {timezone}]"
+
+        return "datetime64[ns]"
+
+    return dtype_name
 
 def resolve_project_path(relative_path: str) -> Path:
     """Convierte una ruta del YAML en ruta absoluta."""
@@ -174,6 +243,176 @@ def markdown_table(
         ]
     )
 
+def validate_schema_contract(
+    dataframe: pd.DataFrame,
+    schema: dict[str, Any],
+    results: list[dict[str, str]],
+) -> None:
+    """Valida columnas, tipos y restricciones del contrato gold."""
+
+    schema_columns = schema["columns"]
+    documented_columns = list(schema_columns.keys())
+    actual_columns = dataframe.columns.tolist()
+
+    # Número de columnas esperado.
+    expected_column_count = int(
+        schema["dataset"]["column_count"]
+    )
+
+    add_result(
+        results,
+        check_name="schema_column_count",
+        passed=len(actual_columns) == expected_column_count,
+        details=(
+            f"Esperadas: {expected_column_count}; "
+            f"encontradas: {len(actual_columns)}"
+        ),
+    )
+
+    # Columnas ausentes y columnas no documentadas.
+    missing_columns = sorted(
+        set(documented_columns) - set(actual_columns)
+    )
+
+    unexpected_columns = sorted(
+        set(actual_columns) - set(documented_columns)
+    )
+
+    add_result(
+        results,
+        check_name="schema_columns_match",
+        passed=not missing_columns and not unexpected_columns,
+        details=(
+            "Las columnas coinciden con el contrato."
+            if not missing_columns and not unexpected_columns
+            else (
+                f"Faltan: {missing_columns}; "
+                f"sobran: {unexpected_columns}"
+            )
+        ),
+    )
+
+    # Si no coinciden las columnas, no es seguro continuar.
+    if missing_columns or unexpected_columns:
+        return
+
+    # Orden de columnas.
+    order_matches = actual_columns == documented_columns
+
+    add_result(
+        results,
+        check_name="schema_column_order",
+        passed=order_matches,
+        details=(
+            "El orden de las columnas coincide con el contrato."
+            if order_matches
+            else "El orden de las columnas no coincide con el contrato."
+        ),
+    )
+
+    # Validaciones individuales por columna.
+    for column_name, column_rules in schema_columns.items():
+        expected_dtype = str(column_rules["dtype"])
+        actual_dtype = normalize_dtype_name(
+            dataframe[column_name].dtype
+        )
+
+        dtype_matches = actual_dtype == expected_dtype
+
+        add_result(
+            results,
+            check_name=f"schema_dtype::{column_name}",
+            passed=dtype_matches,
+            details=(
+                f"Esperado: {expected_dtype}; "
+                f"encontrado: {actual_dtype}"
+            ),
+        )
+
+        nullable = bool(
+            column_rules.get("nullable", True)
+        )
+
+        if not nullable:
+            null_count = int(
+                dataframe[column_name].isna().sum()
+            )
+
+            add_result(
+                results,
+                check_name=f"schema_not_null::{column_name}",
+                passed=null_count == 0,
+                details=f"Valores nulos: {null_count:,}",
+            )
+
+        allowed_values = column_rules.get(
+            "allowed_values"
+        )
+
+        if allowed_values is not None:
+            observed_values = set(
+                dataframe[column_name]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+            invalid_values = sorted(
+                observed_values - set(
+                    str(value)
+                    for value in allowed_values
+                )
+            )
+
+            add_result(
+                results,
+                check_name=f"schema_allowed_values::{column_name}",
+                passed=not invalid_values,
+                details=(
+                    "Todos los valores están permitidos."
+                    if not invalid_values
+                    else (
+                        "Valores no permitidos: "
+                        + ", ".join(invalid_values)
+                    )
+                ),
+            )
+
+        minimum = column_rules.get("minimum")
+        maximum = column_rules.get("maximum")
+
+        if minimum is not None or maximum is not None:
+            numeric_values = pd.to_numeric(
+                dataframe[column_name],
+                errors="coerce",
+            ).dropna()
+
+            below_minimum = 0
+            above_maximum = 0
+
+            if minimum is not None:
+                below_minimum = int(
+                    numeric_values.lt(minimum).sum()
+                )
+
+            if maximum is not None:
+                above_maximum = int(
+                    numeric_values.gt(maximum).sum()
+                )
+
+            add_result(
+                results,
+                check_name=f"schema_range::{column_name}",
+                passed=(
+                    below_minimum == 0
+                    and above_maximum == 0
+                ),
+                details=(
+                    f"Por debajo del mínimo: {below_minimum:,}; "
+                    f"por encima del máximo: {above_maximum:,}"
+                ),
+            )
 
 # ---------------------------------------------------------------------
 # Validaciones principales
@@ -182,6 +421,7 @@ def markdown_table(
 def validate_dataset(
     dataframe: pd.DataFrame,
     rules: dict[str, Any],
+    schema: dict[str, Any],
 ) -> tuple[
     list[dict[str, str]],
     list[dict[str, object]],
@@ -196,6 +436,12 @@ def validate_dataset(
 
     results: list[dict[str, str]] = []
     missingness: list[dict[str, object]] = []
+
+    validate_schema_contract(
+        dataframe=dataframe,
+        schema=schema,
+        results=results,
+    )
 
     dataset_rules = rules["dataset"]
     validation_rules = rules["validation"]
@@ -1035,6 +1281,7 @@ def main() -> int:
 
     try:
         rules = load_rules()
+        schema = load_schema()
 
         dataset_path = resolve_project_path(
             rules["dataset"]["path"]
@@ -1057,6 +1304,7 @@ def main() -> int:
         results, missingness = validate_dataset(
             dataframe,
             rules,
+            schema,
         )
 
         report_content = build_report(

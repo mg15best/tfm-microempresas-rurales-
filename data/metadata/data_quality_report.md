@@ -3,13 +3,13 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **Fecha de validación UTC:** `2026-07-14T10:54:31.490918+00:00`
+- **Fecha de validación UTC:** `2026-07-14T13:04:14.756161+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,693`
 - **Columnas:** `64`
 - **Territorios:** `50`
 - **Periodo:** `2005-01` a `2026-05`
-- **Controles superados:** `53`
+- **Controles superados:** `165`
 - **Advertencias:** `0`
 - **Controles fallidos:** `0`
 
@@ -17,6 +17,118 @@
 
 | Control | Estado | Detalle |
 | --- | --- | --- |
+| schema_column_count | PASS | Esperadas: 64; encontradas: 64 |
+| schema_columns_match | PASS | Las columnas coinciden con el contrato. |
+| schema_column_order | PASS | El orden de las columnas coincide con el contrato. |
+| schema_dtype::territory_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::territory_id | PASS | Valores nulos: 0 |
+| schema_dtype::source_territory_code | PASS | Esperado: string; encontrado: string |
+| schema_not_null::source_territory_code | PASS | Valores nulos: 0 |
+| schema_dtype::source_territory_name | PASS | Esperado: string; encontrado: string |
+| schema_not_null::source_territory_name | PASS | Valores nulos: 0 |
+| schema_dtype::territory_name | PASS | Esperado: string; encontrado: string |
+| schema_not_null::territory_name | PASS | Valores nulos: 0 |
+| schema_dtype::territory_level | PASS | Esperado: string; encontrado: string |
+| schema_not_null::territory_level | PASS | Valores nulos: 0 |
+| schema_allowed_values::territory_level | PASS | Todos los valores están permitidos. |
+| schema_dtype::autonomous_community_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::autonomous_community_id | PASS | Valores nulos: 0 |
+| schema_dtype::autonomous_community_name | PASS | Esperado: string; encontrado: string |
+| schema_not_null::autonomous_community_name | PASS | Valores nulos: 0 |
+| schema_dtype::province_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::province_id | PASS | Valores nulos: 0 |
+| schema_dtype::coverage_quality | PASS | Esperado: string; encontrado: string |
+| schema_not_null::coverage_quality | PASS | Valores nulos: 0 |
+| schema_allowed_values::coverage_quality | PASS | Todos los valores están permitidos. |
+| schema_dtype::month_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::month_id | PASS | Valores nulos: 0 |
+| schema_dtype::date_month | PASS | Esperado: datetime64[ns]; encontrado: datetime64[ns] |
+| schema_not_null::date_month | PASS | Valores nulos: 0 |
+| schema_dtype::year | PASS | Esperado: Int16; encontrado: Int16 |
+| schema_not_null::year | PASS | Valores nulos: 0 |
+| schema_dtype::month | PASS | Esperado: Int8; encontrado: Int8 |
+| schema_not_null::month | PASS | Valores nulos: 0 |
+| schema_range::month | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::month_name | PASS | Esperado: string; encontrado: string |
+| schema_not_null::month_name | PASS | Valores nulos: 0 |
+| schema_dtype::quarter | PASS | Esperado: Int8; encontrado: Int8 |
+| schema_not_null::quarter | PASS | Valores nulos: 0 |
+| schema_range::quarter | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::season | PASS | Esperado: string; encontrado: string |
+| schema_not_null::season | PASS | Valores nulos: 0 |
+| schema_allowed_values::season | PASS | Todos los valores están permitidos. |
+| schema_dtype::is_summer | PASS | Esperado: boolean; encontrado: boolean |
+| schema_not_null::is_summer | PASS | Valores nulos: 0 |
+| schema_dtype::is_christmas_period | PASS | Esperado: boolean; encontrado: boolean |
+| schema_not_null::is_christmas_period | PASS | Valores nulos: 0 |
+| schema_dtype::is_easter_period | PASS | Esperado: boolean; encontrado: boolean |
+| schema_dtype::covid_period | PASS | Esperado: boolean; encontrado: boolean |
+| schema_not_null::covid_period | PASS | Valores nulos: 0 |
+| schema_dtype::complete_month_available | PASS | Esperado: boolean; encontrado: boolean |
+| schema_not_null::complete_month_available | PASS | Valores nulos: 0 |
+| schema_dtype::travellers_total | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::travellers_domestic | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::travellers_foreign | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::overnight_stays_total | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::overnight_stays_domestic | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::overnight_stays_foreign | PASS | Esperado: Int64; encontrado: Int64 |
+| schema_dtype::average_stay | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::establishments_estimated | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::places_estimated | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::occupancy_rate_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::occupancy_rate_pct | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::weekend_occupancy_rate_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::weekend_occupancy_rate_pct | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::room_occupancy_rate_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::room_occupancy_rate_pct | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::staff_employed | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::domestic_travellers_share | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::domestic_travellers_share | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::foreign_travellers_share | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::foreign_travellers_share | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::domestic_overnight_stays_share | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::domestic_overnight_stays_share | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::foreign_overnight_stays_share | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::foreign_overnight_stays_share | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::overnight_stays_per_place | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::travellers_per_establishment | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::weekend_dependence_index | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::overnight_stays_mom_change_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::overnight_stays_yoy_change_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::seasonality_index | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::seasonality_index | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::tourism_pressure_index | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_range::tourism_pressure_index | PASS | Por debajo del mínimo: 0; por encima del máximo: 0 |
+| schema_dtype::price_index | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::price_yoy_change_pct | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::resident_avg_spend_context | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::foreign_avg_spend_context | PASS | Esperado: Float64; encontrado: Float64 |
+| schema_dtype::demand_source_frequency | PASS | Esperado: string; encontrado: string |
+| schema_not_null::demand_source_frequency | PASS | Valores nulos: 0 |
+| schema_allowed_values::demand_source_frequency | PASS | Todos los valores están permitidos. |
+| schema_dtype::price_source_frequency | PASS | Esperado: string; encontrado: string |
+| schema_dtype::price_territory_level | PASS | Esperado: string; encontrado: string |
+| schema_dtype::spend_context_frequency | PASS | Esperado: string; encontrado: string |
+| schema_dtype::spend_context_territory_level | PASS | Esperado: string; encontrado: string |
+| schema_dtype::business_context_frequency | PASS | Esperado: string; encontrado: string |
+| schema_dtype::business_context_territory_level | PASS | Esperado: string; encontrado: string |
+| schema_dtype::data_status | PASS | Esperado: string; encontrado: string |
+| schema_not_null::data_status | PASS | Valores nulos: 0 |
+| schema_allowed_values::data_status | PASS | Todos los valores están permitidos. |
+| schema_dtype::is_provisional | PASS | Esperado: boolean; encontrado: boolean |
+| schema_not_null::is_provisional | PASS | Valores nulos: 0 |
+| schema_dtype::demand_snapshot_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::demand_snapshot_id | PASS | Valores nulos: 0 |
+| schema_dtype::supply_snapshot_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::supply_snapshot_id | PASS | Valores nulos: 0 |
+| schema_dtype::source_snapshot_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::source_snapshot_id | PASS | Valores nulos: 0 |
+| schema_dtype::pipeline_run_id | PASS | Esperado: string; encontrado: string |
+| schema_not_null::pipeline_run_id | PASS | Valores nulos: 0 |
+| schema_dtype::data_version | PASS | Esperado: string; encontrado: string |
+| schema_not_null::data_version | PASS | Valores nulos: 0 |
+| schema_dtype::created_at | PASS | Esperado: datetime64[ns, UTC]; encontrado: datetime64[ns, UTC] |
+| schema_not_null::created_at | PASS | Valores nulos: 0 |
 | dataset_not_empty | PASS | Filas encontradas: 12,693 |
 | required_columns | PASS | Todas las columnas obligatorias están presentes. |
 | key_not_null | PASS | Filas con claves nulas: 0 |

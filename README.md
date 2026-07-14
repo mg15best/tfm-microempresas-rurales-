@@ -32,13 +32,13 @@ Actualmente están implementados:
 * capas raw y processed;
 * dimensiones de territorio y calendario;
 * tabla gold descriptiva;
+* contrato formal de las 64 columnas de la tabla gold;
 * validación automatizada de calidad;
 * informe de calidad;
 * análisis exploratorio en notebook.
 
 Pendiente para las siguientes fases:
 
-* contrato formal del esquema gold;
 * construcción de features temporales;
 * dataset específico de modelado;
 * baselines y modelos predictivos;
@@ -281,6 +281,12 @@ Las reglas se encuentran en:
 data/metadata/validation_rules.yml
 ```
 
+El contrato formal de la tabla gold se encuentra en:
+
+```text
+data/metadata/schema_gold.yml
+```
+
 El validador comprueba:
 
 * columnas obligatorias;
@@ -321,9 +327,8 @@ docs/entregas/
 
 ## Siguientes pasos
 
-1. Crear el contrato formal `schema_gold.yml`.
-2. Construir features temporales y lags sin fuga de información.
-3. Generar `gold_modeling_dataset_monthly.parquet`.
-4. Definir train, validación y test mediante separación temporal.
-5. Comparar baselines y modelos predictivos.
-6. Desarrollar el dashboard y las recomendaciones explicables.
+1. Construir features temporales y lags sin fuga de información.
+2. Generar `gold_modeling_dataset_monthly.parquet`.
+3. Definir train, validación y test mediante separación temporal.
+4. Comparar baselines y modelos predictivos.
+5. Desarrollar el dashboard y las recomendaciones explicables.

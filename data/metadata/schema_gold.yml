@@ -1,0 +1,442 @@
+dataset:
+  name: "gold_tourism_demand_monthly"
+  path: "data/gold/gold_tourism_demand_monthly.parquet"
+  version: "gold_tourism_demand_monthly_v1.0.0"
+  description: >
+    Tabla descriptiva mensual de demanda, oferta, ocupación e
+    indicadores derivados del turismo rural por provincia.
+  granularity: "Una fila por provincia y mes"
+  column_count: 64
+
+  primary_key:
+    - "territory_id"
+    - "month_id"
+
+  territory_level: "province"
+  time_frequency: "monthly"
+
+columns:
+
+  territory_id:
+    dtype: "string"
+    nullable: false
+    description: "Identificador estable de la provincia con formato ES-PROV-XX."
+    source: "derived"
+
+  source_territory_code:
+    dtype: "string"
+    nullable: false
+    description: "Código provincial original conservado desde la fuente."
+    source: "INE"
+
+  source_territory_name:
+    dtype: "string"
+    nullable: false
+    description: "Nombre provincial original conservado desde la fuente."
+    source: "INE"
+
+  territory_name:
+    dtype: "string"
+    nullable: false
+    description: "Nombre normalizado y legible de la provincia."
+    source: "derived"
+
+  territory_level:
+    dtype: "string"
+    nullable: false
+    description: "Nivel territorial real de la observación."
+    source: "derived"
+    allowed_values:
+      - "province"
+
+  autonomous_community_id:
+    dtype: "string"
+    nullable: false
+    description: "Identificador de la comunidad autónoma a la que pertenece la provincia."
+    source: "derived"
+
+  autonomous_community_name:
+    dtype: "string"
+    nullable: false
+    description: "Nombre de la comunidad autónoma a la que pertenece la provincia."
+    source: "derived"
+
+  province_id:
+    dtype: "string"
+    nullable: false
+    description: "Identificador provincial; coincide con territory_id en esta versión."
+    source: "derived"
+
+  coverage_quality:
+    dtype: "string"
+    nullable: false
+    description: "Clasificación general de cobertura histórica del territorio."
+    source: "derived"
+    allowed_values:
+      - "high"
+      - "medium"
+      - "low"
+      - "insufficient"
+
+  month_id:
+    dtype: "string"
+    nullable: false
+    description: "Identificador mensual en formato YYYY-MM."
+    source: "derived"
+
+  date_month:
+    dtype: "datetime64[ns]"
+    nullable: false
+    description: "Primer día del mes representado por la fila."
+    source: "derived"
+
+  year:
+    dtype: "Int16"
+    nullable: false
+    description: "Año del periodo."
+    source: "derived"
+
+  month:
+    dtype: "Int8"
+    nullable: false
+    description: "Número de mes entre 1 y 12."
+    source: "derived"
+    minimum: 1
+    maximum: 12
+
+  month_name:
+    dtype: "string"
+    nullable: false
+    description: "Nombre del mes en español."
+    source: "derived"
+
+  quarter:
+    dtype: "Int8"
+    nullable: false
+    description: "Trimestre natural entre 1 y 4."
+    source: "derived"
+    minimum: 1
+    maximum: 4
+
+  season:
+    dtype: "string"
+    nullable: false
+    description: "Estación meteorológica aproximada."
+    source: "derived"
+    allowed_values:
+      - "winter"
+      - "spring"
+      - "summer"
+      - "autumn"
+
+  is_summer:
+    dtype: "boolean"
+    nullable: false
+    description: "Indica si el mes pertenece al periodo estival ampliado de junio a septiembre."
+    source: "derived"
+
+  is_christmas_period:
+    dtype: "boolean"
+    nullable: false
+    description: "Indica si el mes pertenece al periodo mensual aproximado de Navidad."
+    source: "derived"
+
+  is_easter_period:
+    dtype: "boolean"
+    nullable: true
+    description: "Indicador de Semana Santa, pendiente de integrar un calendario anual."
+    source: "derived"
+
+  covid_period:
+    dtype: "boolean"
+    nullable: false
+    description: "Indica si el mes está comprendido entre marzo de 2020 y diciembre de 2021."
+    source: "derived"
+
+  complete_month_available:
+    dtype: "boolean"
+    nullable: false
+    description: "Indica si el mes ya había finalizado en la fecha de construcción."
+    source: "derived"
+
+  travellers_total:
+    dtype: "Int64"
+    nullable: true
+    description: "Total de viajeros, calculado como residentes más extranjeros."
+    source: "INE 2073"
+
+  travellers_domestic:
+    dtype: "Int64"
+    nullable: true
+    description: "Viajeros residentes en España."
+    source: "INE 2073"
+
+  travellers_foreign:
+    dtype: "Int64"
+    nullable: true
+    description: "Viajeros residentes en el extranjero."
+    source: "INE 2073"
+
+  overnight_stays_total:
+    dtype: "Int64"
+    nullable: true
+    description: "Total de pernoctaciones, variable objetivo principal prevista."
+    source: "INE 2073"
+
+  overnight_stays_domestic:
+    dtype: "Int64"
+    nullable: true
+    description: "Pernoctaciones de residentes en España."
+    source: "INE 2073"
+
+  overnight_stays_foreign:
+    dtype: "Int64"
+    nullable: true
+    description: "Pernoctaciones de residentes en el extranjero."
+    source: "INE 2073"
+
+  average_stay:
+    dtype: "Float64"
+    nullable: true
+    description: "Pernoctaciones totales divididas entre viajeros totales."
+    source: "derived"
+
+  establishments_estimated:
+    dtype: "Float64"
+    nullable: true
+    description: "Número estimado de establecimientos abiertos."
+    source: "INE 2070"
+
+  places_estimated:
+    dtype: "Float64"
+    nullable: true
+    description: "Número estimado de plazas disponibles."
+    source: "INE 2070"
+
+  occupancy_rate_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Grado de ocupación por plazas en escala 0-100."
+    source: "INE 2070"
+    minimum: 0
+    maximum: 100
+
+  weekend_occupancy_rate_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Grado de ocupación por plazas en fin de semana, escala 0-100."
+    source: "INE 2070"
+    minimum: 0
+    maximum: 100
+
+  room_occupancy_rate_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Grado de ocupación por habitaciones en escala 0-100."
+    source: "INE 2070"
+    minimum: 0
+    maximum: 100
+
+  staff_employed:
+    dtype: "Float64"
+    nullable: true
+    description: "Personal empleado estimado en alojamientos de turismo rural."
+    source: "INE 2070"
+
+  domestic_travellers_share:
+    dtype: "Float64"
+    nullable: true
+    description: "Proporción de viajeros residentes sobre viajeros totales."
+    source: "derived"
+    minimum: 0
+    maximum: 1
+
+  foreign_travellers_share:
+    dtype: "Float64"
+    nullable: true
+    description: "Proporción de viajeros extranjeros sobre viajeros totales."
+    source: "derived"
+    minimum: 0
+    maximum: 1
+
+  domestic_overnight_stays_share:
+    dtype: "Float64"
+    nullable: true
+    description: "Proporción de pernoctaciones residentes sobre el total."
+    source: "derived"
+    minimum: 0
+    maximum: 1
+
+  foreign_overnight_stays_share:
+    dtype: "Float64"
+    nullable: true
+    description: "Proporción de pernoctaciones extranjeras sobre el total."
+    source: "derived"
+    minimum: 0
+    maximum: 1
+
+  overnight_stays_per_place:
+    dtype: "Float64"
+    nullable: true
+    description: "Pernoctaciones totales divididas entre plazas estimadas."
+    source: "derived"
+
+  travellers_per_establishment:
+    dtype: "Float64"
+    nullable: true
+    description: "Viajeros totales divididos entre establecimientos estimados."
+    source: "derived"
+
+  weekend_dependence_index:
+    dtype: "Float64"
+    nullable: true
+    description: "Diferencia relativa entre ocupación de fin de semana y ocupación general."
+    source: "derived"
+
+  overnight_stays_mom_change_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Variación porcentual de pernoctaciones respecto al mes anterior."
+    source: "derived"
+
+  overnight_stays_yoy_change_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Variación porcentual respecto al mismo mes del año anterior."
+    source: "derived"
+
+  seasonality_index:
+    dtype: "Float64"
+    nullable: true
+    description: "Intensidad histórica del mes respecto al máximo mensual de su provincia."
+    source: "derived"
+    minimum: 0
+    maximum: 100
+
+  tourism_pressure_index:
+    dtype: "Float64"
+    nullable: true
+    description: "Índice descriptivo relativo de presión turística en escala 0-100."
+    source: "derived"
+    minimum: 0
+    maximum: 100
+
+  price_index:
+    dtype: "Float64"
+    nullable: true
+    description: "Índice contextual de precios, pendiente de integración."
+    source: "not_integrated"
+
+  price_yoy_change_pct:
+    dtype: "Float64"
+    nullable: true
+    description: "Variación interanual del índice de precios, pendiente de integración."
+    source: "not_integrated"
+
+  resident_avg_spend_context:
+    dtype: "Float64"
+    nullable: true
+    description: "Gasto medio contextual de residentes, pendiente de integración."
+    source: "not_integrated"
+
+  foreign_avg_spend_context:
+    dtype: "Float64"
+    nullable: true
+    description: "Gasto medio contextual de visitantes extranjeros, pendiente de integración."
+    source: "not_integrated"
+
+  demand_source_frequency:
+    dtype: "string"
+    nullable: false
+    description: "Frecuencia de publicación de la fuente de demanda."
+    source: "derived"
+    allowed_values:
+      - "monthly"
+
+  price_source_frequency:
+    dtype: "string"
+    nullable: true
+    description: "Frecuencia de la fuente de precios cuando se integre."
+    source: "not_integrated"
+
+  price_territory_level:
+    dtype: "string"
+    nullable: true
+    description: "Nivel territorial real del dato de precios cuando se integre."
+    source: "not_integrated"
+
+  spend_context_frequency:
+    dtype: "string"
+    nullable: true
+    description: "Frecuencia del contexto de gasto cuando se integre."
+    source: "not_integrated"
+
+  spend_context_territory_level:
+    dtype: "string"
+    nullable: true
+    description: "Nivel territorial real del contexto de gasto."
+    source: "not_integrated"
+
+  business_context_frequency:
+    dtype: "string"
+    nullable: true
+    description: "Frecuencia del contexto empresarial cuando se integre."
+    source: "not_integrated"
+
+  business_context_territory_level:
+    dtype: "string"
+    nullable: true
+    description: "Nivel territorial real del contexto empresarial."
+    source: "not_integrated"
+
+  data_status:
+    dtype: "string"
+    nullable: false
+    description: "Estado de provisionalidad del registro."
+    source: "derived"
+    allowed_values:
+      - "provisional"
+      - "final_or_not_marked_provisional"
+      - "unknown"
+
+  is_provisional:
+    dtype: "boolean"
+    nullable: false
+    description: "Indica si el INE marca el periodo como provisional."
+    source: "derived"
+
+  demand_snapshot_id:
+    dtype: "string"
+    nullable: false
+    description: "Hash SHA-256 del snapshot raw de demanda utilizado."
+    source: "pipeline"
+
+  supply_snapshot_id:
+    dtype: "string"
+    nullable: false
+    description: "Hash SHA-256 del snapshot raw de oferta utilizado."
+    source: "pipeline"
+
+  source_snapshot_id:
+    dtype: "string"
+    nullable: false
+    description: "Hash combinado de los snapshots de demanda y oferta."
+    source: "pipeline"
+
+  pipeline_run_id:
+    dtype: "string"
+    nullable: false
+    description: "UUID de la ejecución que generó la tabla gold."
+    source: "pipeline"
+
+  data_version:
+    dtype: "string"
+    nullable: false
+    description: "Versión lógica de la tabla gold."
+    source: "pipeline"
+
+  created_at:
+    dtype: "datetime64[ns, UTC]"
+    nullable: false
+    description: "Fecha y hora UTC de generación de la tabla gold."
+    source: "pipeline"

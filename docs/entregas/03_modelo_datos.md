@@ -185,6 +185,7 @@ project-root/
 │   └── metadata/
 │       ├── data_sources.yml
 │       ├── download_log.csv
+│       ├── schema_gold.yml
 │       ├── validation_rules.yml
 │       └── data_quality_report.md
 ├── docs/
@@ -412,7 +413,7 @@ territory_id + month_id
 | `year` | int16 | Año | Derivado | Sí |
 | `month` | int8 | Mes numérico | Derivado | Sí |
 | `quarter` | int8 | Trimestre | Derivado | Sí |
-| `season` | string | Temporada aproximada: baja, media, alta o especial | Derivado | Deseable |
+| `season` | string | Estación meteorológica aproximada: `winter`, `spring`, `summer` o `autumn` | Derivado | Deseable |
 | `travellers_total` | int64 nullable | Viajeros totales | Ocupación rural | Sí |
 | `travellers_domestic` | int64 nullable | Viajeros residentes en España | Ocupación rural | Deseable |
 | `travellers_foreign` | int64 nullable | Viajeros residentes en el extranjero | Ocupación rural | Deseable |
@@ -982,7 +983,7 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `year` | Año | int16 | Derivado | Sí | Extraído de `date_month` |
 | `month` | Mes numérico | int8 | Derivado | Sí | 1-12 |
 | `quarter` | Trimestre | int8 | Derivado | Sí | 1-4 |
-| `season` | Temporada turística aproximada | string | Derivado | Deseable | Baja, media, alta o especial según reglas iniciales |
+| `season` | Estación meteorológica aproximada | string | Derivado | Deseable | Valores: `winter`, `spring`, `summer` o `autumn`; no representa todavía temporada turística alta o baja |
 | `covid_period` | Indicador de periodo COVID-19 | bool | Derivado | Sí | Permitirá comparar modelos con y sin estos meses |
 
 ## 6.2. Variables de demanda turística rural
@@ -1000,8 +1001,8 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `foreign_travellers_share` | Peso de viajeros extranjeros | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `travellers_total` |
 | `domestic_overnight_stays_share` | Peso de pernoctaciones nacionales | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `overnight_stays_total` |
 | `foreign_overnight_stays_share` | Peso de pernoctaciones extranjeras | float64 nullable | Derivado | Deseable | Valor 0-1; calculado sobre `overnight_stays_total` |
-| `year_on_year_change` | Variación interanual de la demanda | float64 nullable | Derivado | Deseable | Calculada por territorio y mes |
-| `month_on_month_change` | Variación respecto al mes anterior | float64 nullable | Derivado | Deseable | Puede ser muy volátil en territorios pequeños |
+| `overnight_stays_yoy_change_pct` | Variación interanual de las pernoctaciones | float64 nullable | Derivado | Deseable | Porcentaje respecto al mismo mes del año anterior |
+| `overnight_stays_mom_change_pct` | Variación mensual de las pernoctaciones | float64 nullable | Derivado | Deseable | Porcentaje respecto al mes anterior; puede ser muy volátil en territorios pequeños |
 
 ## 6.3. Variables de oferta, ocupación y empleo
 
@@ -1432,8 +1433,8 @@ Variables derivadas iniciales:
 | `overnight_stays_per_place` | `overnight_stays_total / places_estimated` | Presión sobre capacidad |
 | `travellers_per_establishment` | `travellers_total / establishments_estimated` | Intensidad por alojamiento |
 | `weekend_dependence_index` | Diferencia relativa entre ocupación fin de semana y ocupación mensual | Recomendaciones de fines de semana |
-| `year_on_year_change` | Cambio respecto al mismo mes del año anterior | Tendencia |
-| `month_on_month_change` | Cambio respecto al mes anterior | Variación coyuntural |
+| `overnight_stays_yoy_change_pct` | Variación porcentual de las pernoctaciones respecto al mismo mes del año anterior | Tendencia interanual |
+| `overnight_stays_mom_change_pct` | Variación porcentual de las pernoctaciones respecto al mes anterior | Variación coyuntural |
 | `rolling_mean_3m` | Media de los 3 meses anteriores por territorio | Suavizado |
 | `rolling_mean_12m` | Media de los 12 meses anteriores por territorio | Nivel anual |
 | `lag_1` | Valor del mes anterior | Modelo |
@@ -1637,6 +1638,7 @@ Se han completado los siguientes elementos:
 * generación de tres datasets processed;
 * construcción de las dimensiones de territorio y calendario;
 * generación de la tabla gold principal;
+* definición del contrato formal de sus 64 columnas en `schema_gold.yml`;
 * exportación de la tabla gold a Parquet y CSV;
 * validación automatizada mediante reglas YAML;
 * generación de un informe de calidad en Markdown;
@@ -1685,6 +1687,8 @@ La tabla contiene viajeros, pernoctaciones, procedencia nacional y extranjera, e
 Los campos de precios, gasto y contexto empresarial se mantienen como nulos hasta que se integren fuentes compatibles. De esta forma se evita representar una precisión territorial o económica que las fuentes actuales no permiten.
 
 ## 10.3. Calidad y trazabilidad
+
+El archivo `data/metadata/schema_gold.yml` actúa como contrato formal de la tabla principal. Documenta sus 64 columnas, tipos esperados, nulabilidad, procedencia, descripciones, valores permitidos y rangos cuando corresponde.
 
 La capa gold conserva:
 
