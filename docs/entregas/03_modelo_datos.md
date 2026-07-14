@@ -151,7 +151,7 @@ La combinación de Raw en formato original, Processed en Parquet y Gold en Parqu
 
 ## 3.1. Estructura general del repositorio
 
-La estructura prevista del repositorio será:
+El estado actual del repositorio al cierre de esta fase es el siguiente:
 
 ```text
 project-root/
@@ -160,7 +160,8 @@ project-root/
 ├── data/
 │   ├── raw/
 │   │   ├── ine_ocupacion_rural/
-│   │   │   └── .gitkeep
+│   │   │   ├── <timestamp>_ine_2073_demand_province.csv
+│   │   │   └── <timestamp>_ine_2070_supply_province.csv
 │   │   ├── ine_precios_rurales/
 │   │   │   └── .gitkeep
 │   │   ├── dataestur_etr/
@@ -172,82 +173,66 @@ project-root/
 │   │   └── external_optional/
 │   │       └── .gitkeep
 │   ├── processed/
-│   │   ├── .gitkeep
+│   │   ├── processed_ocupacion_rural_demand_province_monthly.parquet
+│   │   ├── processed_ocupacion_rural_supply_province_monthly.parquet
 │   │   ├── processed_ocupacion_rural_monthly.parquet
-│   │   ├── processed_precios_rurales_monthly.parquet
-│   │   ├── processed_etr_residentes.parquet
-│   │   ├── processed_egatur_monthly.parquet
-│   │   ├── processed_empresas_turisticas_annual.parquet
 │   │   ├── dim_calendar_month.parquet
-│   │   ├── dim_territory.parquet
-│   │   └── dim_business_activity_mapping.parquet
+│   │   └── dim_territory.parquet
 │   ├── gold/
-│   │   ├── .gitkeep
 │   │   ├── gold_tourism_demand_monthly.parquet
-│   │   ├── gold_modeling_dataset_monthly.parquet
-│   │   ├── gold_business_context_annual.parquet
-│   │   ├── gold_business_opportunity_monthly.parquet
 │   │   └── exports_csv/
-│   │       └── .gitkeep
+│   │       └── gold_tourism_demand_monthly.csv
 │   └── metadata/
-│       ├── .gitkeep
 │       ├── data_sources.yml
 │       ├── download_log.csv
-│       ├── data_quality_report.md
-│       ├── schema_gold.yml
-│       └── validation_rules.yml
+│       ├── validation_rules.yml
+│       └── data_quality_report.md
 ├── docs/
 │   └── entregas/
 │       ├── 01_ideas_producto.md
 │       ├── 02_datos_necesarios.md
 │       └── 03_modelo_datos.md
 ├── notebooks/
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_quality_checks.ipynb
-│   ├── 03_modeling_baseline.ipynb
-│   └── 04_dashboard_prototype.ipynb
+│   └── 01_data_exploration.ipynb
 ├── reports/
 │   └── figures/
 │       └── .gitkeep
 ├── src/
 │   ├── data/
-│   │   ├── .gitkeep
 │   │   ├── download_sources.py
 │   │   ├── normalize_sources.py
+│   │   ├── build_dimensions.py
 │   │   ├── build_gold.py
 │   │   └── validate_gold.py
 │   ├── features/
-│   │   ├── .gitkeep
-│   │   └── build_features.py
+│   │   └── .gitkeep
 │   ├── models/
-│   │   ├── .gitkeep
-│   │   └── train_baselines.py
+│   │   └── .gitkeep
 │   └── visualization/
-│       ├── .gitkeep
-│       └── dashboard.py
+│       └── .gitkeep
 ├── .gitignore
 ├── README.md
 └── requirements.txt
 ```
 
-Esta estructura separa claramente datos originales, datos transformados, datasets finales y documentación. También permite que el repositorio conserve la trazabilidad entre fuentes, scripts y entregables.
+Esta estructura representa los elementos implementados hasta el momento. Los datasets de modelado, contexto empresarial y oportunidad de negocio, así como los módulos de features, modelos y visualización, se incorporarán progresivamente en las siguientes fases. No se crean archivos vacíos para representar componentes todavía no desarrollados.
 
 ## 3.2. Capa raw
 
 La capa raw contendrá los ficheros descargados de las fuentes oficiales sin modificaciones analíticas. Solo se permitirán transformaciones mínimas necesarias para guardar el archivo, como renombrar el fichero de forma trazable o comprimirlo.
 
-Contenido previsto:
+Estado actual y fuentes previstas:
 
-| Carpeta | Contenido | Ejemplo de fichero |
+| Carpeta | Estado | Contenido |
 |---|---|---|
-| `data/raw/ine_ocupacion_rural/` | Tablas originales de ocupación rural descargadas de INE o Dataestur | `2025-03-15_ine_ocupacion_rural_provincias.xlsx` |
-| `data/raw/ine_precios_rurales/` | Tablas originales del índice de precios de alojamientos rurales | `2025-03-15_ine_iptr_ccaa.xlsx` |
-| `data/raw/dataestur_etr/` | Datos originales de turismo de residentes | `2025-03-15_dataestur_etr_gasto.xlsx` |
-| `data/raw/dataestur_egatur/` | Datos originales de gasto turístico internacional | `2025-03-15_dataestur_egatur.xlsx` |
-| `data/raw/dataestur_empresas_turisticas/` | Datos originales de empresas activas en turismo | `2025-03-15_empresas_turisticas.xlsx` |
-| `data/raw/external_optional/` | Fuentes opcionales, como festivos o climatología | `2025-03-15_festivos_nacionales.csv` |
+| `data/raw/ine_ocupacion_rural/` | Implementada | CSV oficiales completos de las tablas INE `2073`, demanda provincial, y `2070`, oferta, ocupación y empleo provincial |
+| `data/raw/ine_precios_rurales/` | Pendiente | Índice de Precios de Alojamientos de Turismo Rural, previsto como contexto autonómico |
+| `data/raw/dataestur_etr/` | Contextual y desactivada | Turismo de residentes, condicionado por su granularidad y frecuencia de publicación |
+| `data/raw/dataestur_egatur/` | Contextual y desactivada | Gasto turístico internacional, sin distribución artificial entre provincias |
+| `data/raw/dataestur_empresas_turisticas/` | Contextual y desactivada | Empresas activas asociadas al turismo, con frecuencia anual |
+| `data/raw/external_optional/` | Opcional | Calendarios oficiales, festivos o climatología de AEMET |
 
-Cada descarga se registrará en `data/metadata/download_log.csv` con, al menos, estos campos:
+Cada descarga se registra automáticamente en `data/metadata/download_log.csv`. El registro conserva el histórico de ejecuciones e incluye, al menos, los siguientes campos:
 
 | Campo | Descripción |
 |---|---|
@@ -276,33 +261,35 @@ Transformaciones típicas de esta capa:
 - conservación de códigos originales de fuente;
 - creación de identificadores normalizados.
 
-Datasets previstos:
+Datasets implementados y previstos:
 
-| Dataset processed | Descripción | Granularidad |
-|---|---|---|
-| `processed_ocupacion_rural_monthly.parquet` | Datos normalizados de ocupación rural | Territorio x mes x métrica/procedencia, o territorio x mes con métricas ya pivotadas según tabla |
-| `processed_precios_rurales_monthly.parquet` | Índice de precios rural normalizado | Territorio publicado x mes x modalidad/tarifa |
-| `processed_etr_residentes.parquet` | Turismo de residentes y gasto contextual | Destino publicado x periodo x categoría de gasto |
-| `processed_egatur_monthly.parquet` | Gasto turístico internacional normalizado | Destino publicado x mes x categoría o perfil agregado |
-| `processed_empresas_turisticas_annual.parquet` | Empresas activas asociadas al turismo | Territorio x año x actividad/subactividad |
-| `dim_calendar_month.parquet` | Dimensión temporal mensual | Mes |
-| `dim_territory.parquet` | Catálogo normalizado de territorios | Territorio |
-| `dim_business_activity_mapping.parquet` | Mapeo entre actividades oficiales y tipos de negocio del proyecto | Actividad oficial x tipo de negocio normalizado |
+| Dataset processed | Estado | Descripción | Granularidad |
+|---|---|---|---|
+| `processed_ocupacion_rural_demand_province_monthly.parquet` | Implementado | Viajeros y pernoctaciones provinciales normalizados desde la tabla INE `2073` | Provincia x mes x métrica x residencia |
+| `processed_ocupacion_rural_supply_province_monthly.parquet` | Implementado | Establecimientos, plazas, ocupación y personal normalizados desde la tabla INE `2070` | Provincia x mes x métrica |
+| `processed_ocupacion_rural_monthly.parquet` | Implementado | Unión en esquema común de las dos fuentes provinciales | Provincia x mes x métrica x residencia cuando aplica |
+| `dim_calendar_month.parquet` | Implementado | Dimensión mensual continua con año, mes, trimestre, estación y periodos especiales | Mes |
+| `dim_territory.parquet` | Implementado | Catálogo de 50 provincias y su correspondencia con comunidades autónomas | Provincia |
+| `processed_precios_rurales_monthly.parquet` | Pendiente | Índice de precios rural normalizado | Comunidad autónoma x mes |
+| `processed_etr_residentes.parquet` | Ampliación contextual | Turismo de residentes y gasto contextual | Destino publicado x periodo |
+| `processed_egatur_monthly.parquet` | Ampliación contextual | Gasto turístico internacional | Destino publicado x mes |
+| `processed_empresas_turisticas_annual.parquet` | Ampliación contextual | Empresas activas asociadas al turismo | Territorio x año x actividad |
+| `dim_business_activity_mapping.parquet` | Pendiente | Correspondencia entre actividades oficiales y tipos de negocio | Actividad oficial x tipo de negocio |
 
-La capa processed todavía no será el contrato final para el modelado. Podrá tener tablas separadas por fuente y granularidades distintas. Su función será servir de base controlada para la construcción de la capa gold.
+La capa processed conserva tablas separadas por fuente y granularidad, además de un dataset combinado con esquema común. Esta separación permite reconstruir la capa gold sin perder la procedencia de cada métrica. Las fuentes contextuales se incorporarán únicamente cuando exista compatibilidad territorial y temporal suficiente.
 
 ## 3.4. Capa gold
 
 La capa gold será el conjunto de datasets finales, limpios y preparados para consumo analítico. Debe permitir responder a las preguntas del proyecto sin volver a interpretar ficheros originales ni rehacer manualmente cruces entre fuentes.
 
-La capa gold se diseñará con cuatro datasets principales:
+El diseño completo prevé cuatro datasets gold. En esta fase se ha implementado y validado el núcleo descriptivo `gold_tourism_demand_monthly.parquet`; los otros tres datasets corresponden a fases posteriores de modelado, contexto empresarial y recomendaciones.
 
-| Dataset gold | Función principal | Consumidor posterior |
-|---|---|---|
-| `gold_tourism_demand_monthly.parquet` | Tabla principal de demanda, oferta, ocupación y contexto turístico por territorio y mes | EDA, dashboard, segmentación, validación de datos |
-| `gold_modeling_dataset_monthly.parquet` | Dataset específico para entrenamiento y validación de modelos predictivos | Modelos predictivos y backtesting |
-| `gold_business_context_annual.parquet` | Contexto anual del tejido empresarial turístico | Indicadores de densidad empresarial y recomendaciones |
-| `gold_business_opportunity_monthly.parquet` | Indicadores mensuales de oportunidad por territorio y tipo de negocio | Dashboard, sistema de recomendaciones e informe final |
+| Dataset gold | Estado | Función principal | Consumidor posterior |
+|---|---|---|---|
+| `gold_tourism_demand_monthly.parquet` | Implementado | Tabla principal de demanda, oferta, ocupación, procedencia e indicadores derivados por provincia y mes | EDA, validación, dashboard, segmentación y construcción de features |
+| `gold_modeling_dataset_monthly.parquet` | Siguiente fase | Dataset temporal sin fuga de información para predecir pernoctaciones | Modelos predictivos y backtesting |
+| `gold_business_context_annual.parquet` | Ampliación | Contexto anual del tejido empresarial turístico | Indicadores de densidad empresarial |
+| `gold_business_opportunity_monthly.parquet` | Ampliación | Indicadores de oportunidad por territorio, mes y tipo de negocio | Dashboard y recomendaciones explicables |
 
 Además, se mantendrán dimensiones auxiliares en gold o processed según convenga:
 
@@ -357,12 +344,12 @@ La capa gold se define como el contrato de datos del proyecto. Sus principios se
 
 ## 4.2. Resumen de datasets gold
 
-| Dataset gold | Descripción funcional | Nivel de granularidad | Volumen esperado | Clave principal | Uso posterior |
-|---|---|---:|---:|---|---|
-| `gold_tourism_demand_monthly.parquet` | Dataset principal con demanda, oferta, ocupación, procedencia y contexto de precios/gasto cuando sea compatible | Una fila por `territory_id` x `month_id` | 10.000-150.000 registros según nivel territorial incluido | `territory_id`, `month_id` | EDA, dashboard, segmentación, análisis territorial |
-| `gold_modeling_dataset_monthly.parquet` | Dataset preparado para predecir pernoctaciones u ocupación con variables temporales y lags | Una fila por `territory_id` x `target_month_id` | Similar al anterior, descontando meses sin histórico suficiente | `territory_id`, `target_month_id`, `forecast_horizon` | Modelos, validación temporal, backtesting |
-| `gold_business_context_annual.parquet` | Tabla anual del tejido empresarial turístico por territorio y actividad | Una fila por `territory_id` x `year` x `business_activity_group` | 500-10.000 registros | `territory_id`, `year`, `business_activity_group` | Ratios de demanda/empresas, contexto empresarial |
-| `gold_business_opportunity_monthly.parquet` | Indicadores e inputs de recomendación por territorio, mes y tipo de negocio | Una fila por `territory_id` x `month_id` x `business_type` | 50.000-500.000 registros según categorías | `territory_id`, `month_id`, `business_type` | Dashboard, recomendaciones, informe final |
+| Dataset gold | Descripción funcional | Nivel de granularidad | Volumen o estado | Clave principal | Uso posterior |
+|---|---|---|---|---|---|
+| `gold_tourism_demand_monthly.parquet` | Demanda, oferta, ocupación, procedencia e indicadores turísticos | Una fila por `territory_id` x `month_id` | Implementado: 12.693 filas y 64 columnas | `territory_id`, `month_id` | EDA, validación, dashboard, segmentación y features |
+| `gold_modeling_dataset_monthly.parquet` | Dataset preparado para predecir pernoctaciones mediante variables temporales y lags | Una fila por `territory_id` x `target_month_id` x `forecast_horizon` | Pendiente de construcción | `territory_id`, `target_month_id`, `forecast_horizon` | Modelos, validación temporal y backtesting |
+| `gold_business_context_annual.parquet` | Contexto anual del tejido empresarial turístico | Una fila por `territory_id` x `year` x `business_activity_group` | Ampliación futura | `territory_id`, `year`, `business_activity_group` | Ratios de demanda y contexto empresarial |
+| `gold_business_opportunity_monthly.parquet` | Indicadores de oportunidad por territorio y tipo de negocio | Una fila por `territory_id` x `month_id` x `business_type` | Ampliación futura | `territory_id`, `month_id`, `business_type` | Dashboard y recomendaciones |
 
 Para asegurar la viabilidad durante el curso, la capa gold se priorizará en dos niveles:
 
@@ -379,9 +366,13 @@ De esta forma, el proyecto mantiene una versión mínima viable aunque las fuent
 
 ### Descripción funcional
 
-Será el dataset principal del proyecto. Integrará los datos mensuales de ocupación rural por territorio con variables derivadas de calendario, procedencia de viajeros, capacidad, ocupación, presión turística y, cuando sea metodológicamente válido, contexto de precios o gasto.
+Es el dataset principal implementado en esta fase. Integra los datos mensuales provinciales de demanda y oferta turística rural con las dimensiones de calendario y territorio, la procedencia de viajeros, la capacidad, la ocupación, el empleo y distintos indicadores derivados.
 
-Esta tabla servirá para análisis descriptivo, visualización, segmentación de territorios y construcción de variables base para el modelo.
+La versión actual contiene **12.693 registros y 64 columnas**, cubre **50 provincias** y comprende el periodo entre **enero de 2005 y mayo de 2026**. La clave `territory_id + month_id` no presenta duplicados. Los **600 registros comprendidos entre junio de 2025 y mayo de 2026** están marcados como provisionales.
+
+Los campos previstos para precios, gasto y contexto empresarial se mantienen como nulos reales hasta que se integren fuentes compatibles. No se inventan valores ni se asignan datos autonómicos como si fueran observaciones provinciales.
+
+Esta tabla sirve para análisis descriptivo, validación, comparación territorial, segmentación, visualización y construcción de variables para el posterior dataset de modelado.
 
 ### Granularidad
 
@@ -390,9 +381,9 @@ Esta tabla servirá para análisis descriptivo, visualización, segmentación de
 Ejemplo:
 
 ```text
-territory_id = PROV_24
+territory_id = ES-PROV-24
 territory_name = León
-territory_level = provincia
+territory_level = province
 month_id = 2024-08
 ```
 
@@ -1280,9 +1271,9 @@ Mitigación:
 - complementar con fuentes de gasto o residentes solo como contexto;
 - mantener las conclusiones dentro del alcance definido.
 
-## 7.11. Controles automáticos de calidad esperados
+## 7.11. Controles automáticos de calidad implementados
 
-Además de revisar problemas de calidad durante el EDA, el pipeline incorporará validaciones automáticas antes de publicar la capa gold. Las comprobaciones mínimas serán:
+Además de la revisión realizada durante el análisis exploratorio, el pipeline incorpora validaciones automáticas antes de considerar publicable la capa gold. Las reglas se almacenan en `data/metadata/validation_rules.yml`, se ejecutan mediante `src/data/validate_gold.py` y generan el informe reproducible `data/metadata/data_quality_report.md`.
 
 | Control | Regla prevista | Dataset afectado |
 |---|---|---|
@@ -1296,6 +1287,10 @@ Además de revisar problemas de calidad durante el EDA, el pipeline incorporará
 | Continuidad temporal mínima | Para modelado se exigirá histórico suficiente, especialmente para `lag_12` | Modelado |
 | Sin fuga de información | Las features de modelado solo pueden usar meses anteriores al mes objetivo | Modelado |
 | Contexto correctamente etiquetado | Toda variable de precio, gasto o empresas incorporada a una fila mensual debe llevar frecuencia y nivel territorial real | Demanda y oportunidad |
+
+La validación comprueba, entre otros elementos, la existencia de columnas obligatorias, la unicidad y ausencia de nulos en la clave, la cobertura de 50 provincias, la coherencia entre `month_id` y `date_month`, los rangos de porcentajes e índices, las proporciones, los totales de viajeros y pernoctaciones, la estancia media, los datos provisionales, la trazabilidad y la integridad referencial con las dimensiones.
+
+Los meses `2020-04`, `2020-05` y `2020-11` se documentan como ausencias globales permitidas porque no contienen observaciones provinciales de demanda publicadas en la fuente. No se rellenan con cero, ya que un valor no publicado no equivale a ausencia de actividad.
 
 Los registros que no superen una validación no se corregirán de forma automática sin revisión. Se marcarán mediante `data_quality_flag`, se excluirán del modelado si afectan a la variable objetivo o se mantendrán únicamente para análisis descriptivo si el problema no compromete su interpretación.
 
@@ -1626,38 +1621,129 @@ La capa gold principal `gold_tourism_demand_monthly.parquet` es suficiente para 
 
 ---
 
-# 10. Resultado esperado tras esta entrega
+# 10. Resultado alcanzado en la entrega
 
-Al finalizar esta entrega, el repositorio debe permitir entender:
+Al cierre de esta fase, el diseño del modelo de datos no se limita a una propuesta teórica. Se ha construido una primera versión funcional y reproducible del pipeline de datos.
 
-- qué datos usará el proyecto;
-- cómo se almacenarán;
-- qué estructura de capas tendrá el proyecto;
-- qué datasets formarán la capa gold;
-- qué representa cada fila de los datasets principales;
-- qué campos principales se utilizarán;
-- qué relaciones existen entre fuentes;
-- qué problemas de calidad se esperan;
-- qué transformaciones iniciales serán necesarias;
-- qué riesgos existen en el diseño del modelo de datos;
-- cómo se simplificaría el modelo si el alcance completo no fuera viable.
+## 10.1. Componentes implementados
 
-El modelo de datos queda definido con una capa gold principal basada en demanda turística rural mensual y con datasets complementarios para modelado, contexto empresarial y recomendaciones. Esta estructura mantiene la línea del proyecto: una prueba de concepto profesional, reproducible y prudente, orientada a convertir datos oficiales españoles en información útil para la toma de decisiones de alojamientos y microempresas rurales.
+Se han completado los siguientes elementos:
 
-## 10.1. Criterio de cierre de la entrega
+* documentación de las fuentes oficiales y de sus limitaciones en `data_sources.yml`;
+* descarga trazable de las tablas provinciales INE `2073` y `2070`;
+* conservación de snapshots raw con fecha y hora;
+* registro de descargas, tamaño y hash SHA-256 en `download_log.csv`;
+* normalización de demanda y oferta turística rural;
+* generación de tres datasets processed;
+* construcción de las dimensiones de territorio y calendario;
+* generación de la tabla gold principal;
+* exportación de la tabla gold a Parquet y CSV;
+* validación automatizada mediante reglas YAML;
+* generación de un informe de calidad en Markdown;
+* análisis exploratorio reproducible mediante notebook.
 
-La entrega 3 se considera cerrada cuando el repositorio permite identificar de forma clara:
+Los scripts implementados son:
 
-- la ruta de los documentos incrementales dentro de `docs/entregas/`;
-- las fuentes oficiales españolas que alimentarán el proyecto;
-- el formato previsto de almacenamiento en cada capa;
-- la diferencia entre datos raw, processed y gold;
-- la tabla gold principal y los datasets gold complementarios;
-- la granularidad exacta de cada dataset;
-- las claves de relación entre tiempo, territorio, demanda, contexto empresarial y recomendaciones;
-- el diccionario inicial de campos;
-- los problemas de calidad esperados;
-- las transformaciones iniciales previstas;
-- los riesgos del modelo de datos y la alternativa simplificada.
+```text
+src/data/
+├── download_sources.py
+├── normalize_sources.py
+├── build_dimensions.py
+├── build_gold.py
+└── validate_gold.py
+```
 
-Con estos elementos, el modelo de datos queda preparado para las siguientes fases: descarga y validación de las fuentes, construcción de las capas raw y processed, generación de la capa gold, análisis exploratorio, modelado predictivo y desarrollo del dashboard.
+## 10.2. Resultado de la capa gold
+
+La tabla principal generada es:
+
+```text
+data/gold/gold_tourism_demand_monthly.parquet
+```
+
+Sus características son:
+
+| Característica          |                            Resultado |
+| ----------------------- | -----------------------------------: |
+| Filas                   |                               12.693 |
+| Columnas                |                                   64 |
+| Provincias              |                                   50 |
+| Primer periodo          |                              2005-01 |
+| Último periodo          |                              2026-05 |
+| Claves duplicadas       |                                    0 |
+| Registros provisionales |                                  600 |
+| Versión                 | `gold_tourism_demand_monthly_v1.0.0` |
+
+La clave principal es:
+
+```text
+territory_id + month_id
+```
+
+La tabla contiene viajeros, pernoctaciones, procedencia nacional y extranjera, estancia media, establecimientos, plazas, grados de ocupación, personal empleado, variables temporales, ratios e índices derivados.
+
+Los campos de precios, gasto y contexto empresarial se mantienen como nulos hasta que se integren fuentes compatibles. De esta forma se evita representar una precisión territorial o económica que las fuentes actuales no permiten.
+
+## 10.3. Calidad y trazabilidad
+
+La capa gold conserva:
+
+* el identificador del snapshot de demanda;
+* el identificador del snapshot de oferta;
+* una huella conjunta de los datos de origen;
+* un identificador único de ejecución;
+* una versión lógica del dataset;
+* la fecha de creación;
+* el estado definitivo o provisional de cada registro.
+
+Las reglas automáticas verifican claves, columnas, fechas, rangos, proporciones, totales, trazabilidad e integridad referencial.
+
+Los meses de abril de 2020, mayo de 2020 y noviembre de 2020 no contienen observaciones provinciales publicadas y se documentan como ausencias de fuente. No se imputan como valores iguales a cero.
+
+## 10.4. Resultados iniciales del análisis exploratorio
+
+El notebook `notebooks/01_data_exploration.ipynb` confirma que:
+
+* Illes Balears fue la provincia con más pernoctaciones rurales en 2024, con 1.688.709;
+* agosto es el mes con mayor demanda media;
+* el máximo histórico de Santa Cruz de Tenerife en la serie analizada se produjo en agosto de 2005, con 36.085 pernoctaciones;
+* el último mes disponible es mayo de 2026 y tiene carácter provisional;
+* existen diferencias relevantes entre provincias, meses y perfiles de procedencia;
+* el periodo COVID-19 produce una ruptura que debe tratarse explícitamente durante el modelado.
+
+Estos resultados muestran que la estructura construida permite analizar estacionalidad, evolución, capacidad, ocupación y presión turística sin atribuir los valores agregados a empresas individuales.
+
+## 10.5. Limitaciones actuales
+
+La versión implementada se concentra en datos provinciales de la Encuesta de Ocupación en Alojamientos de Turismo Rural.
+
+Todavía no se han integrado:
+
+* el índice autonómico de precios;
+* el gasto de residentes;
+* EGATUR;
+* el contexto anual de empresas turísticas;
+* variables meteorológicas;
+* un calendario anual de Semana Santa;
+* el dataset específico para modelado;
+* los modelos predictivos;
+* el dashboard;
+* las recomendaciones por tipo de negocio.
+
+Estas ausencias no impiden utilizar la capa gold para análisis descriptivo ni construir un primer modelo de referencia.
+
+## 10.6. Cierre y siguientes fases
+
+La entrega demuestra que el diseño propuesto es técnicamente viable y puede reconstruirse desde las fuentes originales mediante scripts.
+
+Los siguientes pasos serán:
+
+1. formalizar el esquema de las columnas gold;
+2. construir variables temporales sin fuga de información;
+3. generar `gold_modeling_dataset_monthly.parquet`;
+4. establecer divisiones temporales de entrenamiento, validación y prueba;
+5. comparar modelos predictivos con baselines estacionales;
+6. desarrollar posteriormente el dashboard y las recomendaciones explicables.
+
+Con estos elementos, el proyecto dispone de una base de datos limpia, trazable y validada para avanzar desde el análisis descriptivo hacia el modelado predictivo de la demanda turística rural.
+
