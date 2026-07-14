@@ -94,7 +94,7 @@ Se utilizará una combinación de formatos, manteniendo cada uno en la fase dond
 
 La decisión principal es usar **Parquet como formato canónico para las capas processed y gold**, manteniendo una copia de exportación en CSV cuando sea útil para revisión académica o para mostrar el contenido sin herramientas adicionales.
 
-En este documento se utilizará el término **processed** para mantener la coherencia con el enunciado de la entrega. Cuando aparezca el prefijo técnico `silver_` en algunos ficheros, se entenderá como equivalente a la capa processed dentro de una arquitectura por capas. No implica una capa adicional distinta, sino una convención de nombrado para identificar datos limpios e intermedios antes de construir la capa gold.
+En este documento se utilizará de forma uniforme el término **processed** para identificar la capa de datos limpios e intermedios anterior a la capa gold. Todos los ficheros de esta capa seguirán, cuando corresponda, el prefijo técnico `processed_`, evitando utilizar denominaciones alternativas para mantener una nomenclatura única en todo el repositorio.
 
 ## 2.2. Justificación técnica
 
@@ -240,7 +240,7 @@ Cada descarga se registrará en `data/metadata/download_log.csv` con, al menos, 
 | `file_hash` | Hash del fichero original para comprobar integridad |
 | `notes` | Observaciones sobre descarga, provisionalidad o incidencias |
 
-## 3.3. Capa processed o silver
+## 3.3. Capa processed
 
 La capa processed contendrá datos limpios y normalizados, pero todavía próximos a cada fuente. Su objetivo es facilitar la integración posterior sin perder trazabilidad.
 
@@ -303,7 +303,7 @@ Capa raw
 Ficheros originales descargados y versionados
       │
       ▼
-Capa processed / silver
+Capa processed
 Limpieza básica, normalización de columnas, fechas, territorios y métricas
       │
       ▼
@@ -1639,4 +1639,4 @@ La entrega 3 se considera cerrada cuando el repositorio permite identificar de f
 - las transformaciones iniciales previstas;
 - los riesgos del modelo de datos y la alternativa simplificada.
 
-Con estos elementos, el modelo de datos queda preparado para las siguientes fases: de
+Con estos elementos, el modelo de datos queda preparado para las siguientes fases: descarga y validación de las fuentes, construcción de las capas raw y processed, generación de la capa gold, análisis exploratorio, modelado predictivo y desarrollo del dashboard.
