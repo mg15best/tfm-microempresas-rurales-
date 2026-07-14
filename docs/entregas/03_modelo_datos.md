@@ -202,7 +202,6 @@ project-root/
 │       ├── 02_datos_necesarios.md
 │       └── 03_modelo_datos.md
 ├── notebooks/
-│   ├── 00_exploracion_inicial.ipynb
 │   ├── 01_data_exploration.ipynb
 │   ├── 02_quality_checks.ipynb
 │   ├── 03_modeling_baseline.ipynb
