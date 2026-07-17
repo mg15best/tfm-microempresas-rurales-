@@ -1500,11 +1500,29 @@ def write_outputs(
         engine="pyarrow",
     )
 
-    gold.to_csv(
+    csv_export = gold.copy()
+
+    csv_export["date_month"] = (
+        pd.to_datetime(
+            csv_export["date_month"],
+            errors="raise",
+        )
+        .dt.strftime("%Y-%m-%d")
+)
+
+    csv_export["created_at"] = (
+        pd.to_datetime(
+            csv_export["created_at"],
+            errors="raise",
+            utc=True,
+        )
+        .dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    )
+
+    csv_export.to_csv(
         CSV_OUTPUT,
         index=False,
         encoding="utf-8",
-        date_format="%Y-%m-%d",
     )
 
     gitkeep_paths = [
