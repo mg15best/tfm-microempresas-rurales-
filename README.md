@@ -143,7 +143,7 @@ README.md
 
 ## Requisitos
 
-* * Python 3.14.2, versión utilizada y comprobada en el desarrollo actual
+* Python 3.14.2, versión utilizada y comprobada en el desarrollo actual
 * Git
 * Visual Studio Code, recomendado
 * Extensiones Python y Jupyter de VS Code, para ejecutar el notebook
