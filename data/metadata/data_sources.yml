@@ -2,7 +2,7 @@ project:
   name: "Sistema de analítica predictiva de demanda turística rural"
   data_domain: "Turismo rural en España"
   target_granularity: "territory_month"
-  target_variable: "overnight_stays"
+  target_variable: "overnight_stays_total"
   source_policy: "official_spanish_sources_only"
   last_source_review: "2026-07-14"
 
