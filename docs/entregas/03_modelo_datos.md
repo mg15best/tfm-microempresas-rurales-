@@ -216,7 +216,7 @@ project-root/
 └── requirements.txt
 ```
 
-Esta estructura representa los elementos implementados hasta el momento. Los datasets de modelado, contexto empresarial y oportunidad de negocio, así como los módulos de features, modelos y visualización, se incorporarán progresivamente en las siguientes fases. No se crean archivos vacíos para representar componentes todavía no desarrollados.
+Esta estructura representa los elementos implementados hasta el momento. Los datasets de modelado, contexto empresarial y oportunidad de negocio, así como los módulos de features, modelos y visualización, se incorporarán progresivamente en las siguientes fases. Las carpetas previstas para fases futuras se conservan mediante archivos `.gitkeep`, sin incluir todavía scripts, modelos o datasets ficticios.
 
 ## 3.2. Capa raw
 
@@ -405,7 +405,7 @@ territory_id + month_id
 | `territory_id` | string | Identificador normalizado del territorio | Derivado | Sí |
 | `source_territory_code` | string | Código o etiqueta original de la fuente | INE/Dataestur | Sí |
 | `territory_name` | string | Nombre legible del territorio | INE/Dataestur | Sí |
-| `territory_level` | string | España, comunidad autónoma, provincia, zona turística o punto turístico | Derivado | Sí |
+| `territory_level` | string | Nivel territorial real de la observación; en la versión implementada, únicamente `province` | Derivado | Sí |
 | `autonomous_community_id` | string | Código de comunidad autónoma asociada cuando aplique | Derivado | Deseable |
 | `province_id` | string | Código de provincia asociada cuando aplique | Derivado | Deseable |
 | `month_id` | string | Periodo mensual en formato `YYYY-MM` | Derivado | Sí |
@@ -707,7 +707,7 @@ Tabla auxiliar para homogeneizar territorios entre fuentes. Es fundamental porqu
 |---|---|---|
 | `territory_id` | string | Identificador normalizado único |
 | `territory_name` | string | Nombre normalizado |
-| `territory_level` | string | España, comunidad autónoma, provincia, zona turística o punto turístico |
+| `territory_level` | string | Nivel territorial real de la observación; en la versión implementada, únicamente `province` |
 | `source_territory_code` | string | Código original de fuente si existe |
 | `source_territory_name` | string | Nombre original de fuente |
 | `autonomous_community_id` | string nullable | Comunidad autónoma asociada |
@@ -975,7 +975,7 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `source_territory_code` | Código o identificador original de la fuente | string | INE/Dataestur | Sí | Puede no existir en todas las descargas; se conservará si aparece |
 | `source_territory_name` | Nombre original del territorio en la fuente | string | INE/Dataestur | Sí | Útil para trazabilidad |
 | `territory_name` | Nombre normalizado del territorio | string | Derivado | Sí | Se normalizarán acentos, espacios y variantes |
-| `territory_level` | Nivel territorial | string | Derivado | Sí | Valores: `country`, `autonomous_community`, `province`, `tourism_zone`, `tourism_point` |
+| `territory_level` | Nivel territorial | string | Derivado | Sí | En la tabla gold implementada solo se admite `province`; los demás niveles quedan reservados para ampliaciones futuras en datasets separados o debidamente identificados. |
 | `autonomous_community_id` | Comunidad autónoma asociada | string nullable | Derivado | Deseable | Necesario para cruzar precios o gasto autonómico |
 | `province_id` | Provincia asociada | string nullable | Derivado | Deseable | Aplicable a provincias, zonas o puntos cuando sea posible |
 | `month_id` | Identificador mensual | string | Derivado | Sí | Formato `YYYY-MM` |
@@ -1293,7 +1293,7 @@ La validación comprueba, entre otros elementos, la existencia de columnas oblig
 
 Los meses `2020-04`, `2020-05` y `2020-11` se documentan como ausencias globales permitidas porque no contienen observaciones provinciales de demanda publicadas en la fuente. No se rellenan con cero, ya que un valor no publicado no equivale a ausencia de actividad.
 
-Los registros que no superen una validación no se corregirán de forma automática sin revisión. Se marcarán mediante `data_quality_flag`, se excluirán del modelado si afectan a la variable objetivo o se mantendrán únicamente para análisis descriptivo si el problema no compromete su interpretación.
+Los registros que no superen una validación no se corregirán de forma automática sin revisión. En la capa gold descriptiva actual, los errores críticos impiden considerar válida la ejecución y quedan registrados en `data_quality_report.md`. En el futuro dataset `gold_modeling_dataset_monthly.parquet`, los registros con incidencias podrán clasificarse mediante `data_quality_flag`, excluirse del entrenamiento si afectan a la variable objetivo o conservarse únicamente para análisis descriptivo cuando el problema no comprometa su interpretación.
 
 ---
 
