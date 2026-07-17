@@ -3,9 +3,9 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **Fecha de validación UTC:** `2026-07-17T11:12:55.513380+00:00`
+- **Fecha de validación UTC:** `2026-07-17T11:53:22.432701+00:00`
 - **Estado general:** **PASS**
-- **Filas:** `12,693`
+- **Filas:** `12,691`
 - **Columnas:** `64`
 - **Territorios:** `50`
 - **Periodo:** `2005-01` a `2026-05`
@@ -129,7 +129,7 @@
 | schema_not_null::data_version | PASS | Valores nulos: 0 |
 | schema_dtype::created_at | PASS | Esperado: datetime64[ns, UTC]; encontrado: datetime64[ns, UTC] |
 | schema_not_null::created_at | PASS | Valores nulos: 0 |
-| dataset_not_empty | PASS | Filas encontradas: 12,693 |
+| dataset_not_empty | PASS | Filas encontradas: 12,691 |
 | required_columns | PASS | Todas las columnas obligatorias están presentes. |
 | key_not_null | PASS | Filas con claves nulas: 0 |
 | key_uniqueness | PASS | Claves duplicadas: 0 |
@@ -194,16 +194,16 @@
 | places_estimated | 0 | 0.00 % |
 | occupancy_rate_pct | 0 | 0.00 % |
 | weekend_occupancy_rate_pct | 0 | 0.00 % |
-| room_occupancy_rate_pct | 1,193 | 9.40 % |
+| room_occupancy_rate_pct | 1,191 | 9.38 % |
 | staff_employed | 0 | 0.00 % |
-| overnight_stays_yoy_change_pct | 766 | 6.03 % |
+| overnight_stays_yoy_change_pct | 768 | 6.05 % |
 | tourism_pressure_index | 0 | 0.00 % |
 
 ## 4. Interpretación
 
 La tabla gold cumple las reglas estructurales, territoriales, temporales, numéricas y de trazabilidad definidas para esta versión.
 
-Las advertencias sobre variables contextuales son esperadas porque las fuentes de precios, gasto y contexto empresarial todavía no se han integrado. Sus valores nulos no representan un error del pipeline actual.
+Las ausencias esperadas de las variables contextuales se registran como controles superados porque las fuentes de precios, gasto y contexto empresarial todavía no se han integrado. Sus valores nulos no representan un error del pipeline actual.
 
 ## 5. Alcance del control
 

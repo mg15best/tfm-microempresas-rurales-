@@ -165,13 +165,16 @@ def calculate_sha256(file_path: Path) -> str:
 
 def find_latest_raw(pattern: str) -> Path:
     """
-    Encuentra el fichero raw más reciente que coincida
-    con un patrón determinado.
+    Encuentra el snapshot raw más reciente según el timestamp
+    UTC incluido al principio del nombre del fichero.
+
+    No se utiliza la fecha de modificación del sistema de archivos,
+    porque puede cambiar al copiar o clonar el repositorio.
     """
 
     candidates = sorted(
         RAW_DIRECTORY.glob(pattern),
-        key=lambda path: path.stat().st_mtime,
+        key=lambda path: path.name,
         reverse=True,
     )
 

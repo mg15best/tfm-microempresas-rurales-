@@ -6,6 +6,7 @@ Entradas:
 - data/metadata/validation_rules.yml
 - dim_territory.parquet
 - dim_calendar_month.parquet
+- data/metadata/schema_gold.yml: contrato formal de columnas, tipos, nulabilidad, valores permitidos, rangos, orden y clave primaria.
 
 Salida:
 - data/metadata/data_quality_report.md
@@ -1243,11 +1244,10 @@ def build_report(
                 "territoriales, temporales, numéricas y de "
                 "trazabilidad definidas para esta versión.",
                 "",
-                "Las advertencias sobre variables contextuales "
-                "son esperadas porque las fuentes de precios, "
-                "gasto y contexto empresarial todavía no se han "
-                "integrado. Sus valores nulos no representan un "
-                "error del pipeline actual.",
+                "Las ausencias esperadas de las variables contextuales se "
+                "registran como controles superados porque las fuentes de precios, "
+                "gasto y contexto empresarial todavía no se han integrado. Sus valores nulos "
+                "no representan un error del pipeline actual.",
                 "",
             ]
         )

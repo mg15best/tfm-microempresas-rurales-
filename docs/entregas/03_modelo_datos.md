@@ -347,7 +347,7 @@ La capa gold se define como el contrato de datos del proyecto. Sus principios se
 
 | Dataset gold | Descripción funcional | Nivel de granularidad | Volumen o estado | Clave principal | Uso posterior |
 |---|---|---|---|---|---|
-| `gold_tourism_demand_monthly.parquet` | Demanda, oferta, ocupación, procedencia e indicadores turísticos | Una fila por `territory_id` x `month_id` | Implementado: 12.693 filas y 64 columnas | `territory_id`, `month_id` | EDA, validación, dashboard, segmentación y features |
+| `gold_tourism_demand_monthly.parquet` | Demanda, oferta, ocupación, procedencia e indicadores turísticos | Una fila por `territory_id` x `month_id` | Implementado: 12.691 filas y 64 columnas | `territory_id`, `month_id` | EDA, validación, dashboard, segmentación y features |
 | `gold_modeling_dataset_monthly.parquet` | Dataset preparado para predecir pernoctaciones mediante variables temporales y lags | Una fila por `territory_id` x `target_month_id` x `forecast_horizon` | Pendiente de construcción | `territory_id`, `target_month_id`, `forecast_horizon` | Modelos, validación temporal y backtesting |
 | `gold_business_context_annual.parquet` | Contexto anual del tejido empresarial turístico | Una fila por `territory_id` x `year` x `business_activity_group` | Ampliación futura | `territory_id`, `year`, `business_activity_group` | Ratios de demanda y contexto empresarial |
 | `gold_business_opportunity_monthly.parquet` | Indicadores de oportunidad por territorio y tipo de negocio | Una fila por `territory_id` x `month_id` x `business_type` | Ampliación futura | `territory_id`, `month_id`, `business_type` | Dashboard y recomendaciones |
@@ -369,7 +369,7 @@ De esta forma, el proyecto mantiene una versión mínima viable aunque las fuent
 
 Es el dataset principal implementado en esta fase. Integra los datos mensuales provinciales de demanda y oferta turística rural con las dimensiones de calendario y territorio, la procedencia de viajeros, la capacidad, la ocupación, el empleo y distintos indicadores derivados.
 
-La versión actual contiene **12.693 registros y 64 columnas**, cubre **50 provincias** y comprende el periodo entre **enero de 2005 y mayo de 2026**. La clave `territory_id + month_id` no presenta duplicados. Los **600 registros comprendidos entre junio de 2025 y mayo de 2026** están marcados como provisionales.
+La versión actual contiene **12.691 registros y 64 columnas**, cubre **50 provincias** y comprende el periodo entre **enero de 2005 y mayo de 2026**. La clave `territory_id + month_id` no presenta duplicados. Los **600 registros comprendidos entre junio de 2025 y mayo de 2026** están marcados como provisionales.
 
 Los campos previstos para precios, gasto y contexto empresarial se mantienen como nulos reales hasta que se integren fuentes compatibles. No se inventan valores ni se asignan datos autonómicos como si fueran observaciones provinciales.
 
@@ -438,7 +438,7 @@ territory_id + month_id
 | `tourism_pressure_index` | float64 nullable | Índice 0-100 de presión turística relativa | Derivado | Deseable |
 | `seasonality_index` | float64 nullable | Índice de estacionalidad territorial | Derivado | Deseable |
 | `covid_period` | bool | Indicador de meses afectados por COVID-19; regla inicial: `true` entre 2020-03 y 2021-12 | Derivado | Sí |
-| `data_status` | string | Definitivo, provisional o desconocido | Fuente/metadatos | Deseable |
+| `data_status` | string | Valores permitidos: `final_or_not_marked_provisional`, `provisional` o `unknown` | Fuente/metadatos | Deseable |
 | `demand_source_frequency` | string | Frecuencia de la fuente principal de ocupación, normalmente mensual | Derivado | Sí |
 | `price_source_frequency` | string nullable | Frecuencia del índice de precios incorporado | Derivado | Deseable |
 | `price_territory_level` | string nullable | Nivel territorial real del dato de precios | Derivado | Deseable |
@@ -1667,7 +1667,7 @@ Sus características son:
 
 | Característica          |                            Resultado |
 | ----------------------- | -----------------------------------: |
-| Filas                   |                               12.693 |
+| Filas                   |                               12.691 |
 | Columnas                |                                   64 |
 | Provincias              |                                   50 |
 | Primer periodo          |                              2005-01 |

@@ -75,7 +75,7 @@ Características de la versión actual:
 
 | Característica          |                            Resultado |
 | ----------------------- | -----------------------------------: |
-| Filas                   |                               12.693 |
+| Filas                   |                               12.691 |
 | Columnas                |                                   64 |
 | Provincias              |                                   50 |
 | Periodo                 |                    2005-01 a 2026-05 |

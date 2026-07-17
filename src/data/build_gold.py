@@ -448,7 +448,7 @@ def build_demand_wide(
         ]
         .sum(
             axis=1,
-            min_count=1,
+            min_count=2,
         )
     )
 
@@ -461,7 +461,7 @@ def build_demand_wide(
         ]
         .sum(
             axis=1,
-            min_count=1,
+            min_count=2,
         )
     )
 
