@@ -158,6 +158,8 @@ matplotlib
 ipykernel
 ```
 
+Las versiones exactas comprobadas se encuentran fijadas en `requirements.txt`. El uso de otras versiones puede funcionar, pero no forma parte del entorno validado en esta entrega.
+
 ## Instalación en Windows
 
 Clonar el repositorio y entrar en su carpeta:
