@@ -10,6 +10,7 @@ Entradas:
 
 Salida:
 - data/metadata/data_quality_report.md
+- data/metadata/missing_territory_months.csv
 
 El script devuelve:
 - código 0 cuando no existen errores;
@@ -47,6 +48,12 @@ SCHEMA_PATH = (
     / "schema_gold.yml"
 )
 
+MISSING_TERRITORY_MONTHS_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "missing_territory_months.csv"
+)
 
 # ---------------------------------------------------------------------
 # Carga de configuración
@@ -243,6 +250,172 @@ def markdown_table(
             *body_lines,
         ]
     )
+
+def find_missing_territory_months(
+    dataframe: pd.DataFrame,
+    allowed_missing_global_months: list[str],
+) -> pd.DataFrame:
+    """
+    Identifica las combinaciones provincia-mes ausentes.
+
+    Los meses globalmente ausentes y documentados en
+    validation_rules.yml se excluyen de la cuadrícula esperada.
+    """
+
+    output_columns = [
+        "territory_id",
+        "territory_name",
+        "month_id",
+        "missing_reason",
+    ]
+
+    if dataframe.empty:
+        return pd.DataFrame(columns=output_columns)
+
+    required_columns = {
+        "territory_id",
+        "territory_name",
+        "month_id",
+        "date_month",
+    }
+
+    missing_columns = sorted(
+        required_columns - set(dataframe.columns)
+    )
+
+    if missing_columns:
+        raise ValueError(
+            "No se puede comprobar la cobertura provincia-mes. "
+            "Faltan las columnas: "
+            + ", ".join(missing_columns)
+        )
+
+    dates = pd.to_datetime(
+        dataframe["date_month"],
+        errors="coerce",
+    )
+
+    if dates.isna().any():
+        raise ValueError(
+            "No se puede comprobar la cobertura provincia-mes "
+            "porque existen fechas no válidas."
+        )
+
+    expected_months = (
+        pd.date_range(
+            start=dates.min(),
+            end=dates.max(),
+            freq="MS",
+        )
+        .strftime("%Y-%m")
+        .tolist()
+    )
+
+    allowed_missing = {
+        str(month)
+        for month in allowed_missing_global_months
+    }
+
+    expected_months = [
+        month
+        for month in expected_months
+        if month not in allowed_missing
+    ]
+
+    territory_ids = sorted(
+        dataframe["territory_id"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    expected_grid = (
+        pd.MultiIndex.from_product(
+            [
+                territory_ids,
+                expected_months,
+            ],
+            names=[
+                "territory_id",
+                "month_id",
+            ],
+        )
+        .to_frame(index=False)
+        .astype("string")
+    )
+
+    actual_keys = (
+        dataframe[
+            [
+                "territory_id",
+                "month_id",
+            ]
+        ]
+        .astype("string")
+        .drop_duplicates()
+    )
+
+    missing_combinations = (
+        expected_grid.merge(
+            actual_keys,
+            on=[
+                "territory_id",
+                "month_id",
+            ],
+            how="left",
+            indicator=True,
+        )
+        .loc[
+            lambda frame: frame["_merge"].eq("left_only"),
+            [
+                "territory_id",
+                "month_id",
+            ],
+        ]
+    )
+
+    territory_names = (
+        dataframe[
+            [
+                "territory_id",
+                "territory_name",
+            ]
+        ]
+        .dropna(subset=["territory_id"])
+        .drop_duplicates(subset=["territory_id"])
+    )
+
+    missing_combinations = missing_combinations.merge(
+        territory_names,
+        on="territory_id",
+        how="left",
+        validate="many_to_one",
+    )
+
+    missing_combinations["missing_reason"] = (
+        "no_primary_demand_metric_available"
+    )
+
+    missing_combinations = (
+        missing_combinations[
+            [
+                "territory_id",
+                "territory_name",
+                "month_id",
+                "missing_reason",
+            ]
+        ]
+        .sort_values(
+            [
+                "territory_id",
+                "month_id",
+            ]
+        )
+        .reset_index(drop=True)
+    )
+
+    return missing_combinations
 
 def validate_schema_contract(
     dataframe: pd.DataFrame,
@@ -1305,6 +1478,51 @@ def main() -> int:
             dataframe,
             rules,
             schema,
+        )
+
+        missing_territory_months = (
+            find_missing_territory_months(
+                dataframe=dataframe,
+                allowed_missing_global_months=(
+                    rules["dataset"].get(
+                        "allowed_missing_global_months",
+                        [],
+                    )
+                ),
+            )
+        )
+
+        MISSING_TERRITORY_MONTHS_PATH.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        missing_territory_months.to_csv(
+            MISSING_TERRITORY_MONTHS_PATH,
+            index=False,
+            encoding="utf-8",
+        )
+
+        missing_territory_month_count = len(
+            missing_territory_months
+        )
+
+        add_result(
+            results,
+            check_name="territory_month_coverage",
+            passed=missing_territory_month_count == 0,
+            severity="warning",
+            details=(
+                "No existen combinaciones provincia-mes ausentes."
+                if missing_territory_month_count == 0
+                else (
+                    "Combinaciones provincia-mes ausentes: "
+                    f"{missing_territory_month_count:,}. "
+                    "Detalle disponible en "
+                    "`data/metadata/"
+                    "missing_territory_months.csv`."
+                )
+            ),
         )
 
         report_content = build_report(

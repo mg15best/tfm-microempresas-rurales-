@@ -3,14 +3,14 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **Fecha de validación UTC:** `2026-07-17T11:53:22.432701+00:00`
+- **Fecha de validación UTC:** `2026-07-23T12:25:34.596015+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`
 - **Territorios:** `50`
 - **Periodo:** `2005-01` a `2026-05`
 - **Controles superados:** `165`
-- **Advertencias:** `0`
+- **Advertencias:** `1`
 - **Controles fallidos:** `0`
 
 ## 2. Resultado de los controles
@@ -182,6 +182,7 @@
 | context_pending::spend_context_territory_level | PASS | Valores no nulos encontrados: 0. La fuente contextual todavía no está integrada. |
 | context_pending::business_context_frequency | PASS | Valores no nulos encontrados: 0. La fuente contextual todavía no está integrada. |
 | context_pending::business_context_territory_level | PASS | Valores no nulos encontrados: 0. La fuente contextual todavía no está integrada. |
+| territory_month_coverage | WARN | Combinaciones provincia-mes ausentes: 9. Detalle disponible en `data/metadata/missing_territory_months.csv`. |
 
 ## 3. Valores nulos en variables principales
 
