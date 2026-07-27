@@ -566,7 +566,7 @@ Permitirá calcular ratios como pernoctaciones por empresa turística, intensida
 Ejemplo:
 
 ```text
-territory_id = PROV_24
+territory_id = ES-PROV-24
 year = 2023
 business_activity_group = food_and_beverage
 ```
@@ -617,7 +617,7 @@ Este dataset traducirá la demanda turística prevista o histórica en indicador
 Cada fila combinará un territorio, un mes y un tipo de negocio. Por ejemplo:
 
 ```text
-territory_id = PROV_24
+territory_id = ES-PROV-24
 month_id = 2024-08
 business_type = restaurants
 ```
@@ -869,7 +869,7 @@ La clave territorial normalizada será `territory_id`. Se construirá evitando a
 ```text
 ESP_TOTAL
 CCAA_07
-PROV_24
+ES-PROV-24
 ZONE_<codigo_o_slug>
 POINT_<codigo_o_slug>
 ```
