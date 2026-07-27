@@ -3,8 +3,8 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **SHA-256 del dataset:** `7905719c966d40d613bd43d3c6869be1fc93d790098734cd8fd69ceb4cc7c8b1`
-- **Fecha de validación UTC:** `2026-07-27T11:53:11.269419+00:00`
+- **SHA-256 del dataset:** `9d3309751cb1c8b54c0324ea56592bed44853f1f948fcce733d424291821f127`
+- **Fecha de validación UTC:** `2026-07-27T12:22:57.882892+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`
@@ -204,7 +204,7 @@
 | room_occupancy_rate_pct | 1,191 | 9.38 % |
 | staff_employed | 0 | 0.00 % |
 | overnight_stays_yoy_change_pct | 768 | 6.05 % |
-| tourism_pressure_index | 0 | 0.00 % |
+| tourism_pressure_index | 768 | 6.05 % |
 
 ## 4. Interpretación
 

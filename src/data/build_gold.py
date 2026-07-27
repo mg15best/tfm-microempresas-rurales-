@@ -989,6 +989,17 @@ def add_tourism_pressure_index(
         .astype("Float64")
     )
 
+    pressure_components = [
+        "_occupancy_score",
+        "_overnight_stays_per_place_score",
+        "_demand_trend_score",
+        "_weekend_pressure_score",
+    ]
+
+    complete_pressure_data = result[
+        pressure_components
+    ].notna().all(axis=1)
+
     result["tourism_pressure_index"] = (
         weighted_available_score(
             result,
@@ -1011,6 +1022,7 @@ def add_tourism_pressure_index(
                 ),
             ],
         )
+        .where(complete_pressure_data)
         .round(2)
     )
 
@@ -1024,7 +1036,6 @@ def add_tourism_pressure_index(
     )
 
     return result
-
 
 # ---------------------------------------------------------------------
 # Campos contextuales todavía no integrados
