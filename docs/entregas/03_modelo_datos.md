@@ -1747,7 +1747,7 @@ La entrega demuestra que el diseño propuesto es técnicamente viable y puede re
 
 Los siguientes pasos serán:
 
-1. formalizar el esquema de las columnas gold;
+1. mantener y evolucionar el contrato formal de la capa gold definido en `data/metadata/schema_gold.yml`;
 2. construir variables temporales sin fuga de información;
 3. generar `gold_modeling_dataset_monthly.parquet`;
 4. establecer divisiones temporales de entrenamiento, validación y prueba;
