@@ -19,6 +19,7 @@ El script devuelve:
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +47,13 @@ SCHEMA_PATH = (
     / "data"
     / "metadata"
     / "schema_gold.yml"
+)
+
+DOWNLOAD_LOG_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "download_log.csv"
 )
 
 MISSING_TERRITORY_MONTHS_PATH = (
@@ -416,6 +424,205 @@ def find_missing_territory_months(
     )
 
     return missing_combinations
+
+def calculate_sha256(file_path: Path) -> str:
+    """Calcula el hash SHA-256 de un fichero."""
+
+    sha256 = hashlib.sha256()
+
+    with file_path.open("rb") as file:
+        for block in iter(
+            lambda: file.read(1024 * 1024),
+            b"",
+        ):
+            sha256.update(block)
+
+    return sha256.hexdigest()
+
+def validate_snapshot_traceability(
+    dataframe: pd.DataFrame,
+    results: list[dict[str, str]],
+) -> None:
+    """
+    Comprueba que los snapshots raw utilizados por la capa gold
+    están registrados en download_log.csv y que los ficheros raw
+    conservan el SHA-256 esperado.
+    """
+
+    if not DOWNLOAD_LOG_PATH.exists():
+        add_result(
+            results,
+            check_name="download_log_exists",
+            passed=False,
+            details=(
+                "No se encontró "
+                "data/metadata/download_log.csv."
+            ),
+        )
+        return
+
+    download_log = pd.read_csv(
+        DOWNLOAD_LOG_PATH,
+        dtype="string",
+    )
+
+    required_columns = {
+        "source_id",
+        "raw_file_path",
+        "file_hash",
+    }
+
+    missing_columns = sorted(
+        required_columns - set(download_log.columns)
+    )
+
+    if missing_columns:
+        add_result(
+            results,
+            check_name="download_log_schema",
+            passed=False,
+            details=(
+                "Faltan columnas en download_log.csv: "
+                + ", ".join(missing_columns)
+            ),
+        )
+        return
+
+    add_result(
+        results,
+        check_name="download_log_schema",
+        passed=True,
+        details=(
+            "download_log.csv contiene las columnas "
+            "necesarias para validar la trazabilidad."
+        ),
+    )
+
+    snapshot_checks = [
+        (
+            "demand_snapshot_id",
+            "ine_eotr_demand_province",
+        ),
+        (
+            "supply_snapshot_id",
+            "ine_eotr_supply_province",
+        ),
+    ]
+
+    for snapshot_column, source_id in snapshot_checks:
+        gold_hashes = set(
+            dataframe[snapshot_column]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        registered_hashes = set(
+            download_log.loc[
+                download_log["source_id"].eq(source_id),
+                "file_hash",
+            ]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+        missing_hashes = sorted(
+            gold_hashes - registered_hashes
+        )
+
+        add_result(
+            results,
+            check_name=(
+                f"snapshot_registered::{snapshot_column}"
+            ),
+            passed=(
+                bool(gold_hashes)
+                and not missing_hashes
+            ),
+            details=(
+                "Todos los hashes de la capa gold están "
+                "registrados en download_log.csv."
+                if gold_hashes and not missing_hashes
+                else (
+                    "Hashes no registrados: "
+                    + (
+                        ", ".join(missing_hashes)
+                        if missing_hashes
+                        else "ningún hash presente en la gold"
+                    )
+                )
+            ),
+        )
+
+        matching_rows = (
+            download_log.loc[
+                download_log["source_id"].eq(source_id)
+                & download_log["file_hash"].isin(gold_hashes),
+                [
+                    "raw_file_path",
+                    "file_hash",
+                ],
+            ]
+            .drop_duplicates()
+        )
+
+        integrity_errors: list[str] = []
+
+        for _, log_row in matching_rows.iterrows():
+            raw_file_path = (
+                PROJECT_ROOT
+                / Path(str(log_row["raw_file_path"]))
+            )
+
+            expected_hash = str(
+                log_row["file_hash"]
+            )
+
+            if not raw_file_path.exists():
+                integrity_errors.append(
+                    "Fichero inexistente: "
+                    + str(log_row["raw_file_path"])
+                )
+                continue
+
+            actual_hash = calculate_sha256(
+                raw_file_path
+            )
+
+            if actual_hash != expected_hash:
+                integrity_errors.append(
+                    "Hash distinto: "
+                    + str(log_row["raw_file_path"])
+                )
+
+        complete_traceability = (
+            bool(gold_hashes)
+            and len(matching_rows) == len(gold_hashes)
+            and not integrity_errors
+        )
+
+        add_result(
+            results,
+            check_name=(
+                f"raw_file_integrity::{snapshot_column}"
+            ),
+            passed=complete_traceability,
+            details=(
+                "Los ficheros raw existen y su SHA-256 "
+                "coincide con download_log.csv."
+                if complete_traceability
+                else (
+                    "; ".join(integrity_errors)
+                    if integrity_errors
+                    else (
+                        "No se encontró un fichero raw "
+                        "registrado para todos los snapshots."
+                    )
+                )
+            ),
+        )
 
 def validate_schema_contract(
     dataframe: pd.DataFrame,
@@ -1137,6 +1344,11 @@ def validate_dataset(
     # -------------------------------------------------------------
     # Trazabilidad
     # -------------------------------------------------------------
+
+    validate_snapshot_traceability(
+        dataframe=dataframe,
+        results=results,
+    )
 
     for column in validation_rules[
         "unique_per_pipeline_columns"

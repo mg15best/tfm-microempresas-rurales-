@@ -3,13 +3,13 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **Fecha de validación UTC:** `2026-07-27T10:07:19.136888+00:00`
+- **Fecha de validación UTC:** `2026-07-27T11:13:33.200370+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`
 - **Territorios:** `50`
 - **Periodo:** `2005-01` a `2026-05`
-- **Controles superados:** `165`
+- **Controles superados:** `170`
 - **Advertencias:** `1`
 - **Controles fallidos:** `0`
 
@@ -167,6 +167,11 @@
 | average_stay_consistency | PASS | Filas con estancia media incoherente: 0 |
 | provisional_period | PASS | Filas con clasificación provisional incoherente: 0 |
 | data_status_consistency | PASS | Filas con data_status incoherente: 0 |
+| download_log_schema | PASS | download_log.csv contiene las columnas necesarias para validar la trazabilidad. |
+| snapshot_registered::demand_snapshot_id | PASS | Todos los hashes de la capa gold están registrados en download_log.csv. |
+| raw_file_integrity::demand_snapshot_id | PASS | Los ficheros raw existen y su SHA-256 coincide con download_log.csv. |
+| snapshot_registered::supply_snapshot_id | PASS | Todos los hashes de la capa gold están registrados en download_log.csv. |
+| raw_file_integrity::supply_snapshot_id | PASS | Los ficheros raw existen y su SHA-256 coincide con download_log.csv. |
 | single_value::source_snapshot_id | PASS | Valores distintos encontrados: 1 |
 | single_value::pipeline_run_id | PASS | Valores distintos encontrados: 1 |
 | single_value::data_version | PASS | Valores distintos encontrados: 1 |
