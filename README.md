@@ -158,6 +158,7 @@ pyarrow
 PyYAML
 matplotlib
 ipykernel
+nbconvert
 ```
 
 Las versiones exactas comprobadas se encuentran fijadas en `requirements.txt`. El uso de otras versiones puede funcionar, pero no forma parte del entorno validado en esta entrega.
@@ -265,6 +266,16 @@ Para ejecutarlo en VS Code:
 2. seleccionar el entorno `.venv` como kernel;
 3. ejecutar todas las celdas mediante **Run All**;
 4. guardar el notebook para conservar tablas y gráficos.
+
+También puede comprobarse la ejecución completa del notebook desde terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m jupyter nbconvert `
+  --to notebook `
+  --execute notebooks\01_data_exploration.ipynb `
+  --output 01_data_exploration.executed.ipynb `
+  --output-dir notebooks `
+  --ExecutePreprocessor.timeout=600
 
 El notebook analiza:
 
