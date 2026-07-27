@@ -156,7 +156,7 @@ columns:
   complete_month_available:
     dtype: "boolean"
     nullable: false
-    description: "Indica si el mes ya había finalizado en la fecha de construcción."
+    description: "Indica si el mes ya había finalizado en la fecha de adquisición de los snapshots fuente."
     source: "derived"
 
   travellers_total:
@@ -308,7 +308,7 @@ columns:
   seasonality_index:
     dtype: "Float64"
     nullable: true
-    description: "Intensidad histórica del mes respecto al máximo mensual de su provincia."
+    description: "Intensidad histórica del mes respecto al máximo mensual de su provincia. Indicador descriptivo calculado con el histórico disponible completo; no debe utilizarse directamente como predictor en validaciones temporales porque incorpora información posterior a observaciones antiguas."
     source: "derived"
     minimum: 0
     maximum: 100
