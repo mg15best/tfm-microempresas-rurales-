@@ -3,8 +3,8 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **SHA-256 del dataset:** `08cef6a3d27b9389e61724c38cf75b0dce2ee117881b496f298a63edacaaef12`
-- **Fecha de validación UTC:** `2026-07-27T11:35:38.448072+00:00`
+- **SHA-256 del dataset:** `7905719c966d40d613bd43d3c6869be1fc93d790098734cd8fd69ceb4cc7c8b1`
+- **Fecha de validación UTC:** `2026-07-27T11:53:11.269419+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`

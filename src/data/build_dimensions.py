@@ -188,6 +188,7 @@ def load_processed_dataset() -> pd.DataFrame:
         "month",
         "value",
         "source_id",
+        "source_file_name",
     }
 
     missing_columns = required_columns.difference(
@@ -574,12 +575,33 @@ def build_calendar_dimension(
         .astype("boolean")
     )
 
-    current_month = pd.Timestamp.now(
-        tz="UTC"
-    ).tz_localize(None).to_period("M").to_timestamp()
+    snapshot_timestamps = pd.to_datetime(
+        dataframe["source_file_name"]
+        .astype("string")
+        .str.extract(
+            r"^(\d{8}T\d{6}Z)_",
+            expand=False,
+        ),
+        format="%Y%m%dT%H%M%SZ",
+        utc=True,
+        errors="coerce",
+    )
+
+    if snapshot_timestamps.isna().any():
+        raise ValueError(
+            "No se pudo obtener la fecha de adquisición "
+            "desde source_file_name."
+        )
+
+    snapshot_month = (
+        snapshot_timestamps.max()
+        .tz_localize(None)
+        .to_period("M")
+        .to_timestamp()
+    )
 
     dimension["complete_month_available"] = (
-        dimension["date_month"] < current_month
+        dimension["date_month"] < snapshot_month
     ).astype("boolean")
 
     dimension["generated_at_utc"] = (
