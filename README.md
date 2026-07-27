@@ -93,6 +93,8 @@ Los datos desde junio de 2025 hasta mayo de 2026 están marcados como provisiona
 
 Los meses `2020-04`, `2020-05` y `2020-11` no contienen observaciones provinciales publicadas. No se rellenan con cero.
 
+También existen nueve combinaciones provincia-mes sin viajeros ni pernoctaciones disponibles: Albacete (`2006-05`); Badajoz (`2005-04`, `2005-05`, `2005-07`, `2005-10`, `2005-11`, `2006-01` y `2006-06`); y Ciudad Real (`2006-05`). Estas combinaciones se excluyen de la capa gold sin imputarlas con cero y se registran en `data/metadata/missing_territory_months.csv`.
+
 ## Hallazgos iniciales
 
 El análisis exploratorio identifica que:

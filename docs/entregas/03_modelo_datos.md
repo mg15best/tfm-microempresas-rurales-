@@ -187,6 +187,7 @@ project-root/
 │       ├── download_log.csv
 │       ├── schema_gold.yml
 │       ├── validation_rules.yml
+│       ├── missing_territory_months.csv
 │       └── data_quality_report.md
 ├── docs/
 │   └── entregas/
@@ -1703,6 +1704,10 @@ La capa gold conserva:
 Las reglas automáticas verifican claves, columnas, fechas, rangos, proporciones, totales, trazabilidad e integridad referencial.
 
 Los meses de abril de 2020, mayo de 2020 y noviembre de 2020 no contienen observaciones provinciales publicadas y se documentan como ausencias de fuente. No se imputan como valores iguales a cero.
+
+Además de esas tres ausencias globales, se han detectado nueve combinaciones concretas de provincia y mes sin ninguna métrica principal de demanda disponible. Corresponden a Albacete en mayo de 2006; Badajoz en abril, mayo, julio, octubre y noviembre de 2005, y enero y junio de 2006; y Ciudad Real en mayo de 2006.
+
+Estas combinaciones no se incorporan a la tabla gold porque no contienen ni `travellers_total` ni `overnight_stays_total`. No se imputan con cero, ya que la ausencia de información no demuestra que la demanda turística fuese nula. El detalle reproducible se genera en `data/metadata/missing_territory_months.csv`.
 
 ## 10.4. Resultados iniciales del análisis exploratorio
 
