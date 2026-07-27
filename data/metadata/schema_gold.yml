@@ -316,7 +316,7 @@ columns:
   tourism_pressure_index:
     dtype: "Float64"
     nullable: true
-    description: "Índice descriptivo relativo de presión turística en escala 0-100."
+    description: "Índice descriptivo relativo de presión turística en escala 0-100. Incluye métricas contemporáneas de demanda y ocupación, por lo que no debe utilizarse directamente como predictor de overnight_stays_total sin aplicar desfases temporales."
     source: "derived"
     minimum: 0
     maximum: 100
