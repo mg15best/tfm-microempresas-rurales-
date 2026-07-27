@@ -3,7 +3,7 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **Fecha de validación UTC:** `2026-07-23T12:25:34.596015+00:00`
+- **Fecha de validación UTC:** `2026-07-27T10:07:19.136888+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`

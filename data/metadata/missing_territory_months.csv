@@ -1,10 +1,10 @@
-territory_id,territory_name,month_id
-ES-PROV-02,Albacete,2006-05
-ES-PROV-06,Badajoz,2005-04
-ES-PROV-06,Badajoz,2005-05
-ES-PROV-06,Badajoz,2005-07
-ES-PROV-06,Badajoz,2005-10
-ES-PROV-06,Badajoz,2005-11
-ES-PROV-06,Badajoz,2006-01
-ES-PROV-06,Badajoz,2006-06
-ES-PROV-13,Ciudad Real,2006-05
+territory_id,territory_name,month_id,missing_reason
+ES-PROV-02,Albacete,2006-05,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2005-04,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2005-05,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2005-07,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2005-10,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2005-11,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2006-01,no_primary_demand_metric_available
+ES-PROV-06,Badajoz,2006-06,no_primary_demand_metric_available
+ES-PROV-13,Ciudad Real,2006-05,no_primary_demand_metric_available
