@@ -68,6 +68,7 @@ source_groups:
 
       frequency: "monthly"
       territory_level: "province"
+      historical_start: "2005-01"
       publication_status: "includes_provisional_data"
 
       dimensions:
