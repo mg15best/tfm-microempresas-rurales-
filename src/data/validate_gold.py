@@ -1519,6 +1519,10 @@ def build_report(
         timezone.utc
     ).isoformat()
 
+    dataset_sha256 = calculate_sha256(
+        dataset_path
+    )
+
     pass_count = sum(
         result["status"] == "PASS"
         for result in results
@@ -1580,6 +1584,7 @@ def build_report(
         "## 1. Resumen de ejecución",
         "",
         f"- **Dataset:** `{dataset_path.relative_to(PROJECT_ROOT).as_posix()}`",
+        f"- **SHA-256 del dataset:** `{dataset_sha256}`",
         f"- **Fecha de validación UTC:** `{generated_at}`",
         f"- **Estado general:** **{overall_status}**",
         f"- **Filas:** `{len(dataframe):,}`",
