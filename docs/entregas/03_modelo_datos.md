@@ -707,7 +707,7 @@ Tabla auxiliar para homogeneizar territorios entre fuentes. Es fundamental porqu
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `territory_id` | string | Identificador normalizado único |
-| `territory_name` | string | Nombre normalizado |
+| `territory_name` | string | Nombre territorial utilizado por el modelo; en la versión actual coincide con el nombre provincial procedente de la fuente |
 | `territory_level` | string | Nivel territorial real de la observación; en la versión implementada, únicamente `province` |
 | `source_territory_code` | string | Código original de fuente si existe |
 | `source_territory_name` | string | Nombre original de fuente |
