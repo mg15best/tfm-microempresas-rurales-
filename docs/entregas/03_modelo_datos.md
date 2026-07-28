@@ -24,22 +24,24 @@ La entrega 3 toma como punto de partida la idea seleccionada y el análisis de d
 
 ## 1.1. Idea seleccionada
 
-El proyecto consiste en desarrollar un **sistema de analítica predictiva de demanda turística rural y estimación de oportunidades para microempresas locales**. La solución se orienta principalmente a alojamientos de turismo rural, pero también a negocios vinculados al flujo de visitantes de los territorios rurales: restaurantes, cafeterías, comercios de producto local, empresas de actividades, guías, transporte local, asociaciones empresariales y entidades públicas de apoyo al desarrollo territorial.
+El MVP consiste en desarrollar un sistema de analítica predictiva de la demanda turística rural, con granularidad mensual y provincial. El núcleo del proyecto será la tabla de demanda turística y la predicción de las pernoctaciones mensuales por territorio a partir de datos oficiales del INE.
 
-El problema que se quiere resolver es que muchas microempresas rurales planifican apertura, personal, compras, existencias, campañas, actividades y colaboraciones con información limitada. Aunque conocen su experiencia pasada, normalmente no disponen de una herramienta que les permita anticipar con suficiente rigor cuándo aumentará o disminuirá la demanda turística de su territorio, qué meses concentran más pernoctaciones, cuánto tiempo permanecen los visitantes o qué peso tiene la demanda nacional y extranjera.
+El problema que se quiere resolver es que muchos alojamientos y agentes vinculados al turismo rural planifican su actividad con información limitada. Aunque conocen su experiencia pasada, normalmente no disponen de una herramienta sencilla que les permita anticipar cuándo aumentará o disminuirá la demanda turística de su territorio, qué meses concentran más pernoctaciones, cuánto tiempo permanecen los visitantes o qué peso tiene la demanda nacional y extranjera.
 
-La solución no pretende predecir la facturación exacta de un negocio concreto. El objetivo es transformar estadísticas oficiales dispersas en una capa de datos limpia y útil para estimar **demanda turística territorial**, **intensidad turística esperada** y **oportunidades relativas de actividad** para distintos tipos de negocios locales.
+La solución no pretende estimar ni predecir la facturación, las ventas, el número de clientes o la rentabilidad de un negocio concreto. Su objetivo es predecir demanda turística territorial y generar información agregada que pueda servir como apoyo para la planificación. Los datos de gasto, tejido empresarial, precios u otros indicadores de oportunidad se mantendrán como contexto opcional y no se utilizarán para atribuir resultados económicos a empresas individuales.
 
 ## 1.2. Solución que se quiere construir
 
 El resultado esperado será una prueba de concepto basada en datos oficiales españoles. El MVP combinará:
 
-- descarga y normalización de fuentes oficiales;
-- análisis descriptivo de demanda turística rural;
-- predicción mensual de una variable principal, preferiblemente pernoctaciones;
-- comparación y segmentación de territorios según estacionalidad, ocupación y procedencia de viajeros;
-- generación de indicadores de oportunidad para distintos negocios locales;
-- dashboard o aplicación ligera para consultar evolución histórica, previsiones y recomendaciones.
+- descarga, trazabilidad y normalización reproducible de las fuentes oficiales;
+- análisis descriptivo de la demanda turística rural;
+- predicción mensual de las pernoctaciones con una granularidad provincial estable;
+- comparación del modelo con baselines estacionales y evaluación mediante particiones temporales;
+- generación de previsiones territoriales interpretables;
+- visualización sencilla de la evolución histórica, las previsiones y los resultados de evaluación.
+
+Las fuentes complementarias sobre gasto turístico, empresas, precios, calendario o clima tendrán un papel contextual y opcional. Su ausencia no impedirá completar el MVP y su integración solo se abordará cuando aporte valor al núcleo predictivo sin aumentar innecesariamente el alcance.
 
 La unidad analítica principal será:
 
