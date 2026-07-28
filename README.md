@@ -188,7 +188,7 @@ Instalar las dependencias dentro del entorno:
 Comprobar la instalación:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, ipykernel; print('Dependencias instaladas correctamente')"
+.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, ipykernel, nbconvert; print('Dependencias instaladas correctamente')"
 ```
 
 La carpeta `.venv/` no debe subirse al repositorio.
@@ -276,6 +276,7 @@ También puede comprobarse la ejecución completa del notebook desde terminal:
   --output 01_data_exploration.executed.ipynb `
   --output-dir notebooks `
   --ExecutePreprocessor.timeout=600
+```
 
 El notebook analiza:
 
