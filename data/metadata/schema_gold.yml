@@ -38,7 +38,7 @@ columns:
   territory_name:
     dtype: "string"
     nullable: false
-    description: "Nombre normalizado y legible de la provincia."
+    description: "Nombre legible de la provincia utilizado en la capa gold; en esta versión coincide con el nombre publicado por el INE tras eliminar espacios externos."
     source: "derived"
 
   territory_level:

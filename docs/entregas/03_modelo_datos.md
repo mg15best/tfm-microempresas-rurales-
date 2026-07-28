@@ -975,7 +975,7 @@ Este diccionario recoge los campos principales que se espera utilizar en la capa
 | `territory_id` | Identificador normalizado del territorio | string | Derivado | Sí | Clave principal junto con `month_id` |
 | `source_territory_code` | Código o identificador original de la fuente | string | INE/Dataestur | Sí | Puede no existir en todas las descargas; se conservará si aparece |
 | `source_territory_name` | Nombre original del territorio en la fuente | string | INE/Dataestur | Sí | Útil para trazabilidad |
-| `territory_name` | Nombre normalizado del territorio | string | Derivado | Sí | Se normalizarán acentos, espacios y variantes |
+| `territory_name` | Nombre legible del territorio utilizado en la capa gold | string | Derivado | Sí | En la versión actual coincide con el nombre provincial publicado por el INE tras eliminar espacios externos; no se aplica todavía un catálogo adicional de nombres canónicos |
 | `territory_level` | Nivel territorial | string | Derivado | Sí | En la tabla gold implementada solo se admite `province`; los demás niveles quedan reservados para ampliaciones futuras en datasets separados o debidamente identificados. |
 | `autonomous_community_id` | Comunidad autónoma asociada | string nullable | Derivado | Deseable | Necesario para cruzar precios o gasto autonómico |
 | `province_id` | Provincia asociada | string nullable | Derivado | Deseable | Aplicable a provincias, zonas o puntos cuando sea posible |
