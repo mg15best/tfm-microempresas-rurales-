@@ -286,14 +286,14 @@ La capa processed conserva tablas separadas por fuente y granularidad, además d
 
 La capa gold será el conjunto de datasets finales, limpios y preparados para consumo analítico. Debe permitir responder a las preguntas del proyecto sin volver a interpretar ficheros originales ni rehacer manualmente cruces entre fuentes.
 
-El diseño completo prevé cuatro datasets gold. En esta fase se ha implementado y validado el núcleo descriptivo `gold_tourism_demand_monthly.parquet`; los otros tres datasets corresponden a fases posteriores de modelado, contexto empresarial y recomendaciones.
+El alcance del MVP se concentra en dos datasets: la tabla mensual de demanda turística ya implementada y el futuro dataset específico de modelado. Los datasets de contexto empresarial y oportunidad se conservan únicamente como posibles ampliaciones posteriores, fuera del alcance obligatorio del MVP y condicionadas a que no desplacen el trabajo del núcleo predictivo.
 
 | Dataset gold | Estado | Función principal | Consumidor posterior |
 |---|---|---|---|
 | `gold_tourism_demand_monthly.parquet` | Implementado | Tabla principal de demanda, oferta, ocupación, procedencia e indicadores derivados por provincia y mes | EDA, validación, dashboard, segmentación y construcción de features |
 | `gold_modeling_dataset_monthly.parquet` | Siguiente fase | Dataset temporal sin fuga de información para predecir pernoctaciones | Modelos predictivos y backtesting |
-| `gold_business_context_annual.parquet` | Ampliación | Contexto anual del tejido empresarial turístico | Indicadores de densidad empresarial |
-| `gold_business_opportunity_monthly.parquet` | Ampliación | Indicadores de oportunidad por territorio, mes y tipo de negocio | Dashboard y recomendaciones explicables |
+| `gold_business_context_annual.parquet` | Contexto opcional futuro | Contexto agregado del tejido empresarial turístico, sin estimaciones de resultados individuales | Análisis contextual no necesario para el MVP |
+| `gold_business_opportunity_monthly.parquet` | Fuera del MVP actual | Posible traducción futura de la demanda en señales territoriales no monetarias | Ampliación condicionada, sin estimaciones de ventas o rentabilidad |
 
 Además, se mantendrán dimensiones auxiliares en gold o processed según convenga:
 
@@ -361,8 +361,8 @@ Para asegurar la viabilidad durante el curso, la capa gold se priorizará en dos
 |---|---|---|---|
 | Núcleo obligatorio | `gold_tourism_demand_monthly.parquet` | Alta | Contiene la demanda turística rural mensual y permite análisis, dashboard y segmentación. |
 | Núcleo obligatorio | `gold_modeling_dataset_monthly.parquet` | Alta | Permite entrenar y validar el modelo predictivo de pernoctaciones u ocupación. |
-| Ampliación deseable | `gold_business_context_annual.parquet` | Media | Enriquece el análisis con tejido empresarial turístico, pero no es imprescindible para predecir demanda. |
-| Ampliación deseable | `gold_business_opportunity_monthly.parquet` | Media | Traduce la demanda en recomendaciones por tipo de negocio; puede simplificarse si las fuentes complementarias no encajan. |
+| Contexto opcional futuro | `gold_business_context_annual.parquet` | Baja | No es necesario para entrenar, validar ni presentar el núcleo predictivo del MVP. |
+| Fuera del MVP actual | `gold_business_opportunity_monthly.parquet` | Baja | Solo se reconsiderará tras demostrar que el modelo de pernoctaciones mejora los baselines estacionales. |
 
 De esta forma, el proyecto mantiene una versión mínima viable aunque las fuentes complementarias de gasto o empresas no puedan integrarse con la calidad suficiente.
 
