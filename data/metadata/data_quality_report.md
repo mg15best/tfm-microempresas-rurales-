@@ -4,7 +4,7 @@
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
 - **SHA-256 del dataset:** `9d3309751cb1c8b54c0324ea56592bed44853f1f948fcce733d424291821f127`
-- **Fecha de validación UTC:** `2026-07-27T12:22:57.882892+00:00`
+- **Fecha de validación UTC:** `2026-07-28T12:18:23.060922+00:00`
 - **Estado general:** **PASS**
 - **Filas:** `12,691`
 - **Columnas:** `64`
