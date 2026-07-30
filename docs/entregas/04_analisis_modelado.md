@@ -33,6 +33,24 @@ La presente entrega no construye todavía el modelo predictivo definitivo. Su ob
 
 Las fuentes de precios, gasto turístico y tejido empresarial se mantienen como ampliaciones contextuales opcionales. No forman parte del núcleo obligatorio de esta estrategia porque su incorporación no es necesaria para demostrar la viabilidad del modelo principal de demanda.
 
+### Evolución respecto a la Entrega 3
+
+La presente estrategia concreta varias decisiones que en `03_modelo_datos.md` se habían dejado abiertas para fases posteriores. Estas decisiones no sustituyen la Entrega 3, sino que representan la evolución incremental del proyecto al pasar del diseño de la capa de datos al diseño del análisis y del modelado.
+
+En particular:
+
+- se mantiene `target_overnight_stays_total` como variable objetivo principal;
+- se concreta un horizonte inicial de predicción de un mes (`forecast_horizon = 1`);
+- se confirma `lag_12_overnight_stays` como baseline estacional principal;
+- se plantea inicialmente la comparación entre una regresión Ridge y un modelo de boosting de árboles;
+- se concreta una validación estrictamente temporal mediante backtesting con ventana expansiva;
+- se adopta MAE como métrica principal, complementada con RMSE, WAPE y análisis de errores por provincia;
+- las variables de precios, gasto y contexto empresarial pasan a considerarse ampliaciones opcionales y no serán necesarias para el primer modelo;
+- `seasonality_index` y `tourism_pressure_index` se mantienen como indicadores descriptivos, pero no se utilizarán directamente como predictores por su riesgo de incorporar información no disponible en el momento real de la predicción;
+- el dataset de modelado previsto en la Entrega 3 se mantiene como siguiente capa gold, pero su construcción deberá garantizar que todos los lags y variables derivadas utilizan exclusivamente información anterior al mes objetivo.
+
+De esta forma se conserva la trazabilidad entre entregas sin modificar retrospectivamente las decisiones documentadas y entregadas en fases anteriores.
+
 ---
 
 # 1. Problema que se busca resolver

@@ -35,16 +35,29 @@ Actualmente están implementados:
 * contrato formal de las 64 columnas de la tabla gold;
 * validación automatizada de calidad;
 * informe de calidad;
-* análisis exploratorio en notebook.
+* análisis exploratorio en notebook;
+* estrategia de análisis y modelado para la predicción mensual de pernoctaciones;
+* definición del baseline estacional, modelos candidatos, validación temporal, métricas y criterios de selección.
+
+La estrategia de modelado definida en la Entrega 4 plantea inicialmente:
+
+* variable objetivo: pernoctaciones mensuales por provincia;
+* horizonte inicial: un mes;
+* baseline principal: pernoctaciones del mismo mes del año anterior (`lag_12`);
+* modelo candidato interpretable: regresión Ridge;
+* modelo candidato flexible: boosting de árboles;
+* validación mediante backtesting temporal con ventana expansiva;
+* MAE como métrica principal, complementada con RMSE, WAPE y análisis territorial de errores.
 
 Pendiente para las siguientes fases:
 
-* construcción de features temporales;
-* dataset específico de modelado;
-* baselines y modelos predictivos;
-* backtesting temporal;
+* construcción reproducible de features temporales sin fuga de información;
+* generación de `gold_modeling_dataset_monthly.parquet`;
+* implementación del baseline y los modelos candidatos;
+* ejecución del backtesting y evaluación comparativa;
+* generación de previsiones;
 * dashboard;
-* recomendaciones por tipo de microempresa.
+* recomendaciones operativas explicables.
 
 ## Fuentes utilizadas
 
@@ -120,7 +133,8 @@ docs/
 └── entregas/
     ├── 01_ideas_producto.md
     ├── 02_datos_necesarios.md
-    └── 03_modelo_datos.md
+    ├── 03_modelo_datos.md
+    └── 04_analisis_modelado.md
 
 notebooks/
 └── 01_data_exploration.ipynb
@@ -331,6 +345,7 @@ docs/entregas/
 * `01_ideas_producto.md`: definición y selección inicial de la idea.
 * `02_datos_necesarios.md`: identificación y evaluación de datos necesarios.
 * `03_modelo_datos.md`: arquitectura raw, processed y gold, granularidades, claves, calidad y transformaciones.
+* `04_analisis_modelado.md`: problema predictivo, análisis previsto, datos de entrada y salida, baseline, modelos candidatos, validación temporal, métricas, criterios de selección, riesgos y alternativas.
 
 ## Limitaciones actuales
 
@@ -344,7 +359,8 @@ docs/entregas/
 ## Siguientes pasos
 
 1. Construir features temporales y lags sin fuga de información.
-2. Generar `gold_modeling_dataset_monthly.parquet`.
-3. Definir train, validación y test mediante separación temporal.
-4. Comparar baselines y modelos predictivos.
-5. Desarrollar el dashboard y las recomendaciones explicables.
+2. Generar y validar `gold_modeling_dataset_monthly.parquet`.
+3. Implementar el baseline estacional y los modelos candidatos definidos en la Entrega 4.
+4. Ejecutar el backtesting temporal y comparar MAE, RMSE, WAPE y rendimiento por provincia.
+5. Seleccionar el modelo únicamente si mejora de forma estable el baseline.
+6. Generar las previsiones y desarrollar posteriormente el dashboard y las recomendaciones explicables.
