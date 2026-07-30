@@ -1,0 +1,211 @@
+dataset:
+  name: "gold_modeling_dataset_monthly"
+  path: "data/gold/gold_modeling_dataset_monthly.parquet"
+  schema_path: "data/metadata/schema_modeling.yml"
+  config_path: "data/metadata/modeling_config.yml"
+
+  key_columns:
+    - "territory_id"
+    - "target_month_id"
+    - "forecast_horizon"
+
+  expected_territory_level: "province"
+  expected_forecast_horizon: 1
+  expected_territory_count: 50
+
+  provisional_from: "2025-06-01"
+
+  allowed_missing_global_months:
+    - "2020-04"
+    - "2020-05"
+    - "2020-11"
+
+  documented_missing_combinations_path: "data/metadata/missing_territory_months.csv"
+
+  required_columns:
+    - "territory_id"
+    - "territory_name"
+    - "territory_level"
+    - "target_month_id"
+    - "target_date_month"
+    - "forecast_horizon"
+    - "target_overnight_stays_total"
+    - "target_occupancy_rate_pct"
+    - "year"
+    - "month"
+    - "quarter"
+    - "is_summer"
+    - "is_christmas_period"
+    - "covid_period"
+    - "lag_1_overnight_stays"
+    - "lag_3_overnight_stays"
+    - "lag_12_overnight_stays"
+    - "rolling_mean_3m_overnight_stays"
+    - "rolling_mean_12m_overnight_stays"
+    - "yoy_change_overnight_stays"
+    - "lag_1_occupancy_rate_pct"
+    - "lag_12_occupancy_rate_pct"
+    - "lag_1_weekend_occupancy_rate_pct"
+    - "lag_1_average_stay"
+    - "lag_12_average_stay"
+    - "lag_1_domestic_overnight_stays_share"
+    - "lag_1_foreign_overnight_stays_share"
+    - "lag_1_places_estimated"
+    - "lag_1_establishments_estimated"
+    - "lag_1_staff_employed"
+    - "evaluation_split"
+    - "data_quality_flag"
+    - "is_provisional"
+    - "source_snapshot_id"
+    - "pipeline_run_id"
+    - "data_version"
+    - "created_at"
+
+validation:
+
+  non_negative_columns:
+    - "target_overnight_stays_total"
+    - "lag_1_overnight_stays"
+    - "lag_3_overnight_stays"
+    - "lag_12_overnight_stays"
+    - "rolling_mean_3m_overnight_stays"
+    - "rolling_mean_12m_overnight_stays"
+    - "lag_1_average_stay"
+    - "lag_12_average_stay"
+    - "lag_1_places_estimated"
+    - "lag_1_establishments_estimated"
+    - "lag_1_staff_employed"
+
+  percentage_columns_0_100:
+    - "target_occupancy_rate_pct"
+    - "lag_1_occupancy_rate_pct"
+    - "lag_12_occupancy_rate_pct"
+    - "lag_1_weekend_occupancy_rate_pct"
+
+  share_columns_0_1:
+    - "lag_1_domestic_overnight_stays_share"
+    - "lag_1_foreign_overnight_stays_share"
+
+  share_pairs:
+    - name: "lag_1_overnight_stay_shares"
+      first: "lag_1_domestic_overnight_stays_share"
+      second: "lag_1_foreign_overnight_stays_share"
+      expected_sum: 1.0
+
+  allowed_evaluation_splits:
+    - "train"
+    - "validation_1"
+    - "validation_2"
+    - "validation_3"
+    - "test"
+    - "provisional_monitoring"
+
+  allowed_data_quality_flags:
+    - "ok"
+    - "missing_target"
+    - "insufficient_history"
+    - "missing_lag"
+    - "provisional_target"
+    - "outlier_review"
+
+  temporal_integrity:
+    target_month_matches_target_date: true
+    target_month_is_first_day_of_month: true
+    lags_are_calendar_based: true
+    rolling_features_exclude_target_month: true
+    missing_months_are_not_zero_filled: true
+
+    lag_rules:
+      - feature: "lag_1_overnight_stays"
+        source: "overnight_stays_total"
+        offset_months: 1
+
+      - feature: "lag_3_overnight_stays"
+        source: "overnight_stays_total"
+        offset_months: 3
+
+      - feature: "lag_12_overnight_stays"
+        source: "overnight_stays_total"
+        offset_months: 12
+
+      - feature: "lag_1_occupancy_rate_pct"
+        source: "occupancy_rate_pct"
+        offset_months: 1
+
+      - feature: "lag_12_occupancy_rate_pct"
+        source: "occupancy_rate_pct"
+        offset_months: 12
+
+      - feature: "lag_1_average_stay"
+        source: "average_stay"
+        offset_months: 1
+
+      - feature: "lag_12_average_stay"
+        source: "average_stay"
+        offset_months: 12
+
+  rolling_rules:
+    - feature: "rolling_mean_3m_overnight_stays"
+      source: "overnight_stays_total"
+      window_months: 3
+      minimum_offset_months: 1
+      require_complete_calendar_window: true
+
+    - feature: "rolling_mean_12m_overnight_stays"
+      source: "overnight_stays_total"
+      window_months: 12
+      minimum_offset_months: 1
+      require_complete_calendar_window: true
+
+  leakage_controls:
+    forbidden_predictors:
+      - "target_overnight_stays_total"
+      - "target_occupancy_rate_pct"
+      - "seasonality_index"
+      - "tourism_pressure_index"
+      - "source_snapshot_id"
+      - "pipeline_run_id"
+      - "data_version"
+      - "created_at"
+      - "evaluation_split"
+      - "data_quality_flag"
+      - "is_provisional"
+
+    require_historical_features_before_target: true
+    require_preprocessing_fit_on_train_only: true
+    prohibit_random_split: true
+
+  split_rules:
+    validation_1:
+      start: "2021-06"
+      end: "2022-05"
+
+    validation_2:
+      start: "2022-06"
+      end: "2023-05"
+
+    validation_3:
+      start: "2023-06"
+      end: "2024-05"
+
+    test:
+      start: "2024-06"
+      end: "2025-05"
+
+    provisional_monitoring:
+      start: "2025-06"
+      end: "2026-05"
+      allowed_for_model_selection: false
+
+  baseline:
+    feature: "lag_12_overnight_stays"
+    require_same_evaluation_rows_as_models: true
+
+  traceability:
+    required_columns:
+      - "source_snapshot_id"
+      - "pipeline_run_id"
+      - "data_version"
+      - "created_at"
+
+  numeric_tolerance: 0.000001

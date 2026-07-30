@@ -1,0 +1,196 @@
+project:
+  name: "Analítica predictiva de demanda turística rural"
+  delivery: 4
+  purpose: "Definir de forma reproducible la estrategia inicial de modelado temporal"
+  status: "design"
+
+problem:
+  task_type: "forecasting_as_supervised_regression"
+  modeling_scope: "global_provincial_panel"
+  territory_level: "province"
+  forecast_frequency: "monthly"
+  forecast_horizon_months: 1
+
+target:
+  column: "target_overnight_stays_total"
+  source_column: "overnight_stays_total"
+  description: "Pernoctaciones mensuales en alojamientos de turismo rural por provincia"
+  non_negative: true
+
+source_dataset:
+  path: "data/gold/gold_tourism_demand_monthly.parquet"
+  granularity:
+    - "territory_id"
+    - "month_id"
+  expected_territory_level: "province"
+
+modeling_dataset:
+  planned_path: "data/gold/gold_modeling_dataset_monthly.parquet"
+  primary_key:
+    - "territory_id"
+    - "target_month_id"
+    - "forecast_horizon"
+  forecast_horizon: 1
+
+baseline:
+  name: "seasonal_naive_lag_12"
+  prediction_feature: "lag_12_overnight_stays"
+  description: "Utiliza las pernoctaciones observadas en el mismo mes del año anterior"
+
+candidate_models:
+  - name: "ridge"
+    family: "linear_regularized"
+    implementation: "sklearn.linear_model.Ridge"
+    role: "interpretable_candidate"
+
+  - name: "hist_gradient_boosting"
+    family: "tree_boosting"
+    implementation: "sklearn.ensemble.HistGradientBoostingRegressor"
+    role: "flexible_candidate"
+
+features:
+  calendar:
+    - "year"
+    - "month"
+    - "quarter"
+    - "is_summer"
+    - "is_christmas_period"
+    - "covid_period"
+
+  demand_history:
+    - "lag_1_overnight_stays"
+    - "lag_3_overnight_stays"
+    - "lag_12_overnight_stays"
+    - "rolling_mean_3m_overnight_stays"
+    - "rolling_mean_12m_overnight_stays"
+    - "yoy_change_overnight_stays"
+
+  auxiliary_history_candidates:
+    - "lag_1_occupancy_rate_pct"
+    - "lag_12_occupancy_rate_pct"
+    - "lag_1_weekend_occupancy_rate_pct"
+    - "lag_1_average_stay"
+    - "lag_12_average_stay"
+    - "lag_1_domestic_overnight_stays_share"
+    - "lag_1_foreign_overnight_stays_share"
+    - "lag_1_places_estimated"
+    - "lag_1_establishments_estimated"
+    - "lag_1_staff_employed"
+
+  categorical:
+    - "territory_id"
+
+optional_future_features:
+  - "is_easter_period"
+  - "price_index_lag_1"
+  - "business_density_annual"
+  - "climate_features"
+
+excluded_predictors:
+  contemporaneous_target_month:
+    - "travellers_total"
+    - "overnight_stays_total"
+    - "occupancy_rate_pct"
+    - "weekend_occupancy_rate_pct"
+    - "room_occupancy_rate_pct"
+    - "average_stay"
+    - "staff_employed"
+
+  leakage_risk:
+    - "seasonality_index"
+    - "tourism_pressure_index"
+
+  not_integrated:
+    - "price_index"
+    - "price_yoy_change_pct"
+    - "resident_avg_spend_context"
+    - "foreign_avg_spend_context"
+
+  traceability_only:
+    - "source_snapshot_id"
+    - "pipeline_run_id"
+    - "data_version"
+    - "created_at"
+
+feature_engineering:
+  group_by: "territory_id"
+  order_by: "date_month"
+  use_calendar_based_lags: true
+  rolling_windows_use_shifted_values: true
+  allow_future_information: false
+  missing_demand_as_zero: false
+
+validation:
+  strategy: "expanding_window_backtesting"
+  random_split: false
+
+  folds:
+    - name: "validation_1"
+      train_end: "2021-05"
+      validation_start: "2021-06"
+      validation_end: "2022-05"
+
+    - name: "validation_2"
+      train_end: "2022-05"
+      validation_start: "2022-06"
+      validation_end: "2023-05"
+
+    - name: "validation_3"
+      train_end: "2023-05"
+      validation_start: "2023-06"
+      validation_end: "2024-05"
+
+  final_test:
+    start: "2024-06"
+    end: "2025-05"
+
+  provisional_monitoring:
+    start: "2025-06"
+    end: "2026-05"
+    use_for_model_selection: false
+
+metrics:
+  primary: "MAE"
+
+  complementary:
+    - "RMSE"
+    - "WAPE"
+    - "mean_bias"
+    - "MAE_by_territory"
+    - "MAE_by_month"
+    - "MAE_by_season"
+    - "territories_improved_vs_baseline_pct"
+
+model_selection:
+  compare_on_same_rows: true
+  compare_on_same_folds: true
+  minimum_mae_improvement_pct: 5.0
+  require_final_test_improvement: true
+  require_majority_territories_improved: true
+  prefer_simpler_model_when_similar: true
+
+fallback:
+  if_no_candidate_beats_baseline:
+    selected_solution: "seasonal_naive_lag_12"
+    keep_predictive_mvp: true
+    document_result: true
+
+data_quality:
+  global_missing_months:
+    - "2020-04"
+    - "2020-05"
+    - "2020-11"
+
+  provincial_missing_combinations_file: "data/metadata/missing_territory_months.csv"
+
+  provisional_from: "2025-06"
+
+  require_unique_modeling_key: true
+  require_non_negative_target: true
+  require_feature_date_before_target_date: true
+
+reproducibility:
+  random_state: 42
+  preserve_source_snapshot_id: true
+  preserve_pipeline_run_id: true
+  preserve_data_version: true

@@ -1,0 +1,321 @@
+dataset:
+  name: "gold_modeling_dataset_monthly"
+  planned_path: "data/gold/gold_modeling_dataset_monthly.parquet"
+  status: "planned"
+  description: >
+    Dataset temporal preparado para el entrenamiento, validación y backtesting
+    de modelos de predicción de pernoctaciones mensuales en alojamientos de
+    turismo rural por provincia.
+  version: "gold_modeling_dataset_monthly_v1.0.0"
+
+granularity:
+  description: "Una fila por provincia, mes objetivo y horizonte de predicción"
+  primary_key:
+    - "territory_id"
+    - "target_month_id"
+    - "forecast_horizon"
+
+temporal_rules:
+  forecast_horizon_months: 1
+  predictors_must_be_available_before_target: true
+  calendar_based_lags: true
+  missing_months_must_not_be_treated_as_zero: true
+  rolling_features_must_use_shifted_history: true
+
+columns:
+
+  - name: "territory_id"
+    dtype: "string"
+    nullable: false
+    role: "key"
+    description: "Identificador normalizado de la provincia"
+
+  - name: "territory_name"
+    dtype: "string"
+    nullable: false
+    role: "metadata"
+    description: "Nombre legible de la provincia"
+
+  - name: "territory_level"
+    dtype: "string"
+    nullable: false
+    role: "metadata"
+    allowed_values:
+      - "province"
+
+  - name: "target_month_id"
+    dtype: "string"
+    nullable: false
+    role: "key"
+    description: "Mes objetivo en formato YYYY-MM"
+
+  - name: "target_date_month"
+    dtype: "date"
+    nullable: false
+    role: "key"
+    description: "Fecha correspondiente al primer día del mes objetivo"
+
+  - name: "forecast_horizon"
+    dtype: "int8"
+    nullable: false
+    role: "key"
+    allowed_values:
+      - 1
+
+  - name: "target_overnight_stays_total"
+    dtype: "float64"
+    nullable: false
+    role: "target"
+    minimum: 0
+    description: "Pernoctaciones reales del mes objetivo"
+
+  - name: "target_occupancy_rate_pct"
+    dtype: "float64"
+    nullable: true
+    role: "evaluation_only"
+    minimum: 0
+    maximum: 100
+    description: >
+      Ocupación real del mes objetivo. No puede utilizarse como predictor
+      de las pernoctaciones del mismo mes.
+
+  - name: "year"
+    dtype: "int16"
+    nullable: false
+    role: "feature"
+
+  - name: "month"
+    dtype: "int8"
+    nullable: false
+    role: "feature"
+    minimum: 1
+    maximum: 12
+
+  - name: "quarter"
+    dtype: "int8"
+    nullable: false
+    role: "feature"
+    minimum: 1
+    maximum: 4
+
+  - name: "is_summer"
+    dtype: "bool"
+    nullable: false
+    role: "feature"
+
+  - name: "is_christmas_period"
+    dtype: "bool"
+    nullable: false
+    role: "feature"
+
+  - name: "covid_period"
+    dtype: "bool"
+    nullable: false
+    role: "feature"
+
+  - name: "lag_1_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role: "feature"
+    minimum: 0
+    temporal_offset_months: -1
+
+  - name: "lag_3_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role: "feature"
+    minimum: 0
+    temporal_offset_months: -3
+
+  - name: "lag_12_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role:
+      - "feature"
+      - "baseline"
+    minimum: 0
+    temporal_offset_months: -12
+
+  - name: "rolling_mean_3m_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role: "feature"
+    minimum: 0
+    history_rule: "mean of t-1, t-2 and t-3"
+
+  - name: "rolling_mean_12m_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role: "feature"
+    minimum: 0
+    history_rule: "mean of the twelve months strictly prior to target"
+
+  - name: "yoy_change_overnight_stays"
+    dtype: "float64"
+    nullable: true
+    role: "feature"
+    description: "Variación interanual calculada únicamente con información histórica"
+
+  - name: "lag_1_occupancy_rate_pct"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    maximum: 100
+    temporal_offset_months: -1
+
+  - name: "lag_12_occupancy_rate_pct"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    maximum: 100
+    temporal_offset_months: -12
+
+  - name: "lag_1_weekend_occupancy_rate_pct"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    maximum: 100
+    temporal_offset_months: -1
+
+  - name: "lag_1_average_stay"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    temporal_offset_months: -1
+
+  - name: "lag_12_average_stay"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    temporal_offset_months: -12
+
+  - name: "lag_1_domestic_overnight_stays_share"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    maximum: 1
+    temporal_offset_months: -1
+
+  - name: "lag_1_foreign_overnight_stays_share"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    maximum: 1
+    temporal_offset_months: -1
+
+  - name: "lag_1_places_estimated"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    temporal_offset_months: -1
+
+  - name: "lag_1_establishments_estimated"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    temporal_offset_months: -1
+
+  - name: "lag_1_staff_employed"
+    dtype: "float64"
+    nullable: true
+    role: "candidate_feature"
+    minimum: 0
+    temporal_offset_months: -1
+
+  - name: "evaluation_split"
+    dtype: "string"
+    nullable: false
+    role: "evaluation_control"
+    allowed_values:
+      - "train"
+      - "validation_1"
+      - "validation_2"
+      - "validation_3"
+      - "test"
+      - "provisional_monitoring"
+
+  - name: "data_quality_flag"
+    dtype: "string"
+    nullable: false
+    role: "quality_control"
+    allowed_values:
+      - "ok"
+      - "missing_target"
+      - "insufficient_history"
+      - "missing_lag"
+      - "provisional_target"
+      - "outlier_review"
+
+  - name: "is_provisional"
+    dtype: "bool"
+    nullable: false
+    role: "quality_control"
+
+  - name: "source_snapshot_id"
+    dtype: "string"
+    nullable: false
+    role: "traceability"
+
+  - name: "pipeline_run_id"
+    dtype: "string"
+    nullable: false
+    role: "traceability"
+
+  - name: "data_version"
+    dtype: "string"
+    nullable: false
+    role: "traceability"
+
+  - name: "created_at"
+    dtype: "datetime"
+    nullable: false
+    role: "traceability"
+
+excluded_from_predictors:
+
+  leakage:
+    - "target_overnight_stays_total"
+    - "target_occupancy_rate_pct"
+    - "seasonality_index"
+    - "tourism_pressure_index"
+
+  traceability:
+    - "source_snapshot_id"
+    - "pipeline_run_id"
+    - "data_version"
+    - "created_at"
+
+  evaluation_control:
+    - "evaluation_split"
+    - "data_quality_flag"
+    - "is_provisional"
+
+optional_future_columns:
+  - name: "is_easter_period"
+    reason: "Pendiente de integrar un calendario anual reproducible"
+
+  - name: "price_index_lag_1"
+    reason: "Fuente de precios todavía no integrada en el núcleo"
+
+  - name: "business_density_annual"
+    reason: "Contexto empresarial fuera del MVP predictivo inicial"
+
+validation_requirements:
+  unique_primary_key: true
+  target_non_negative: true
+  target_month_matches_target_date: true
+  no_future_information: true
+  lag_1_calendar_exact: true
+  lag_3_calendar_exact: true
+  lag_12_calendar_exact: true
+  rolling_features_exclude_target_month: true
+  provisional_rows_excluded_from_model_selection: true
