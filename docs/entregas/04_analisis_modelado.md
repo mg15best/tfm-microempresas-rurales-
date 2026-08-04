@@ -20,16 +20,16 @@ data/gold/gold_tourism_demand_monthly.parquet
 
 Su unidad analítica es una fila por provincia y mes. La versión disponible contiene 12.691 registros, 64 columnas, 50 provincias y un periodo comprendido entre enero de 2005 y mayo de 2026.
 
-La presente entrega no construye todavía el modelo predictivo definitivo. Su objetivo es definir de forma completa y trazable:
+La entrega se inició definiendo de forma completa y trazable la estrategia de análisis y modelado y, en su versión final, incorpora también la implementación reproducible de esa estrategia. El trabajo desarrollado permite:
 
-- el problema que se quiere resolver;
-- el análisis que se realizará antes, durante y después del modelado;
-- el dataset específico de modelado;
-- los modelos de referencia y candidatos;
-- la estrategia de validación temporal;
-- las métricas y criterios de selección;
-- las salidas previstas;
-- los riesgos y alternativas.
+- concretar el problema predictivo;
+- construir y validar el dataset específico de modelado;
+- implementar el baseline estacional;
+- entrenar y comparar los modelos candidatos;
+- aplicar backtesting con ventanas temporales expansivas;
+- evaluar una única vez el test final no provisional;
+- generar predicciones, métricas e informes reproducibles;
+- documentar los resultados, limitaciones y decisión final.
 
 Las fuentes de precios, gasto turístico y tejido empresarial se mantienen como ampliaciones contextuales opcionales. No forman parte del núcleo obligatorio de esta estrategia porque su incorporación no es necesaria para demostrar la viabilidad del modelo principal de demanda.
 
@@ -1268,26 +1268,262 @@ Al finalizar esta fase, el repositorio deberá permitir comprender:
 - cómo se integrará la salida en el MVP;
 - qué riesgos y alternativas existen.
 
-La siguiente fase de implementación deberá desarrollar, de forma reproducible:
+Durante esta fase se han desarrollado, de forma reproducible, los siguientes componentes principales:
 
 ```text
 src/features/build_modeling_dataset.py
-src/models/train_baseline.py
-src/models/train_models.py
-src/models/evaluate_models.py
+src/features/validate_modeling_dataset.py
+src/models/evaluate_baseline.py
+src/models/evaluate_final_candidate.py
 data/gold/gold_modeling_dataset_monthly.parquet
-data/gold/gold_tourism_demand_forecast_monthly.parquet
+data/model_outputs/final_candidate_predictions.parquet
 ```
 
-Los nombres definitivos podrán ajustarse a las convenciones del repositorio.
+También se han creado el contrato del dataset de modelado, las reglas de validación, la configuración temporal de folds, pruebas automatizadas de lags y medias móviles, métricas desagregadas e informes de selección y evaluación final.
 
-Antes de implementar los modelos se deberán crear:
+La Entrega 4 queda así alineada con el alcance actual del TFM: se ha construido un núcleo predictivo riguroso, comparable con una referencia sencilla y preparado para evolucionar hacia un futuro sistema de apoyo a la planificación turística rural.
 
-- contrato del dataset de modelado;
-- reglas de validación;
-- pruebas de lags y medias móviles;
-- configuración temporal de folds;
-- documentación de métricas;
-- control de versiones de datos y modelos.
+---
 
-La Entrega 4 queda así alineada con el alcance actual del TFM: construir primero un núcleo predictivo riguroso, comparable con una referencia sencilla y útil para un futuro sistema de apoyo a la planificación turística rural.
+# 10. Implementación y resultados obtenidos
+
+## 10.1. Componentes implementados
+
+La estrategia descrita en este documento se ha llevado a una implementación reproducible dentro del repositorio.
+
+### Configuración y contratos
+
+```text
+data/metadata/modeling_config.yml
+data/metadata/schema_modeling.yml
+data/metadata/modeling_validation_rules.yml
+```
+
+### Ingeniería y validación de datos
+
+```text
+src/features/build_modeling_dataset.py
+src/features/validate_modeling_dataset.py
+data/gold/gold_modeling_dataset_monthly.parquet
+data/metadata/modeling_data_quality_report.md
+tests/test_build_modeling_dataset.py
+```
+
+### Evaluación de modelos
+
+```text
+src/models/evaluate_baseline.py
+src/models/evaluate_final_candidate.py
+data/model_outputs/final_candidate_predictions.parquet
+```
+
+### Informes y métricas
+
+```text
+data/metadata/baseline_evaluation_report.md
+data/metadata/baseline_metrics_summary.csv
+data/metadata/baseline_metrics_by_territory.csv
+data/metadata/baseline_metrics_by_month.csv
+data/metadata/baseline_metrics_by_season.csv
+data/metadata/model_selection_validation_report.md
+data/metadata/final_model_evaluation_report.md
+data/metadata/final_candidate_evaluation_report.md
+data/metadata/final_candidate_metrics_by_split.csv
+data/metadata/final_candidate_test_by_territory.csv
+data/metadata/final_candidate_test_by_month.csv
+```
+
+## 10.2. Dataset de modelado construido
+
+El dataset final de modelado es:
+
+```text
+data/gold/gold_modeling_dataset_monthly.parquet
+```
+
+Sus principales características son:
+
+| Indicador | Resultado |
+|---|---:|
+| Filas | 12.691 |
+| Columnas | 37 |
+| Provincias | 50 |
+| Periodo | 2005-01 a 2026-05 |
+| Claves duplicadas | 0 |
+| Train inicial | 9.691 |
+| Validation 1 | 600 |
+| Validation 2 | 600 |
+| Validation 3 | 600 |
+| Test final | 600 |
+| Seguimiento provisional | 600 |
+
+La clasificación de calidad de las filas es:
+
+| Estado | Filas |
+|---|---:|
+| `ok` | 10.606 |
+| `insufficient_history` | 595 |
+| `missing_lag` | 890 |
+| `provisional_target` | 600 |
+
+La validación reproducible del dataset terminó con:
+
+```text
+53 PASS / 0 WARN / 0 FAIL
+```
+
+Las pruebas automatizadas verifican que los lags buscan el mes calendario exacto, que los huecos no se sustituyen por cero y que las medias móviles excluyen el mes objetivo y requieren ventanas completas.
+
+## 10.3. Cobertura común de evaluación
+
+La comparación con el baseline utiliza únicamente filas:
+
+- con target conocido;
+- con `lag_12_overnight_stays` disponible;
+- no provisionales;
+- pertenecientes a los folds temporales definidos.
+
+La cobertura común es:
+
+| Split | Filas totales | Filas evaluables |
+|---|---:|---:|
+| Validation 1 | 600 | 550 |
+| Validation 2 | 600 | 600 |
+| Validation 3 | 600 | 600 |
+| Test | 600 | 600 |
+
+Las 50 filas no evaluables de `validation_1` corresponden al mes cuyo lag anual apunta a noviembre de 2020, uno de los meses globalmente ausentes.
+
+## 10.4. Resultado del baseline estacional
+
+El baseline utiliza:
+
+```text
+predicción = lag_12_overnight_stays
+```
+
+Resultados por partición:
+
+| Split | Filas | MAE | RMSE | WAPE | Sesgo medio |
+|---|---:|---:|---:|---:|---:|
+| Validation 1 | 550 | 9.116,56 | 16.454,67 | 44,60 % | -8.782,89 |
+| Validation 2 | 600 | 3.071,71 | 6.094,11 | 14,91 % | -909,25 |
+| Validation 3 | 600 | 3.209,14 | 5.552,10 | 15,16 % | -571,43 |
+| Test | 600 | 3.045,00 | 5.236,82 | 14,35 % | -49,18 |
+
+El comportamiento excepcionalmente desfavorable de `validation_1` refleja la comparación entre la recuperación posterior y meses afectados por la ruptura de COVID-19. En las ventanas posteriores, el baseline muestra un rendimiento mucho más estable.
+
+## 10.5. Resultado de Ridge
+
+Ridge se implementó mediante un pipeline con:
+
+- imputación por mediana ajustada exclusivamente con cada entrenamiento;
+- indicadores de ausencia;
+- escalado de variables numéricas;
+- codificación one-hot de provincia, mes y trimestre;
+- predicciones recortadas a cero;
+- búsqueda temporal limitada del parámetro `alpha`.
+
+La mejor configuración fue:
+
+```text
+alpha = 100
+```
+
+Resultado agregado sobre las tres validaciones:
+
+| Modelo | Filas | MAE | MAE baseline | Mejora |
+|---|---:|---:|---:|---:|
+| Ridge | 1.750 | 5.450,77 | 5.018,64 | -8,61 % |
+
+Ridge solo mejoró el baseline en `validation_2`, con una mejora del 3,71 %, y no alcanzó el umbral práctico definido. Por ello quedó descartado como candidato principal y no se utilizó el test para reajustarlo.
+
+## 10.6. Selección de HistGradientBoosting
+
+Se probaron configuraciones limitadas de `HistGradientBoostingRegressor` con target original y transformación `log1p`, utilizando únicamente las tres validaciones.
+
+La configuración seleccionada fue:
+
+```text
+config_id = hgb_raw_02
+target_transform = raw
+learning_rate = 0.05
+max_iter = 300
+max_leaf_nodes = 31
+min_samples_leaf = 20
+l2_regularization = 1.0
+early_stopping = False
+random_state = 42
+```
+
+Resultado agregado de validación:
+
+| Modelo | Filas | MAE | MAE baseline | Mejora |
+|---|---:|---:|---:|---:|
+| `hgb_raw_02` | 1.750 | 5.124,56 | 5.018,64 | -2,11 % |
+
+Resultado por fold:
+
+| Split | MAE HGB | MAE baseline | Mejora |
+|---|---:|---:|---:|
+| Validation 1 | 8.081,94 | 9.116,56 | 11,35 % |
+| Validation 2 | 4.133,83 | 3.071,71 | -34,58 % |
+| Validation 3 | 3.404,34 | 3.209,14 | -6,08 % |
+
+El candidato mejora durante la recuperación posterior a COVID-19, pero empeora en las dos validaciones más recientes. Por tanto, no cumple el criterio de mejora agregada y estabilidad temporal.
+
+## 10.7. Evaluación única del test final
+
+Tras congelar la configuración seleccionada, el modelo se entrenó con 10.737 filas evaluables hasta mayo de 2024 y se evaluó una sola vez en el periodo junio de 2024 a mayo de 2025.
+
+| Modelo | Filas | MAE | RMSE | WAPE | Sesgo medio |
+|---|---:|---:|---:|---:|---:|
+| Baseline lag-12 | 600 | 3.045,00 | 5.236,82 | 14,35 % | -49,18 |
+| `hgb_raw_02` | 600 | 2.760,59 | 4.550,60 | 13,01 % | 378,82 |
+
+En el test final, HistGradientBoosting:
+
+- mejora el MAE un 9,34 %;
+- reduce el RMSE aproximadamente un 13,10 %;
+- reduce el WAPE de 14,35 % a 13,01 %;
+- mejora en 41 de 50 provincias, un 82 %;
+- mejora en 7 de los 12 meses;
+- no produce predicciones negativas.
+
+Las mayores mejoras mensuales se observan en marzo y abril. Los principales deterioros aparecen en agosto, septiembre y diciembre.
+
+## 10.8. Decisión final
+
+Los criterios definidos antes de abrir el test producen el siguiente resultado:
+
+| Criterio | Resultado |
+|---|---|
+| Mejora agregada en validación igual o superior al 5 % | FAIL |
+| Mejora en test igual o superior al 5 % | PASS |
+| Mejora en la mayoría de provincias | PASS |
+| Promoción completa como único modelo operativo | FAIL |
+
+La decisión final es:
+
+1. Mantener el baseline estacional lag-12 como referencia robusta y mecanismo de fallback.
+2. Conservar `hgb_raw_02` como mejor candidato de machine learning y modelo ganador en el test final.
+3. Mostrar ambos resultados de forma transparente.
+4. No realizar nuevos ajustes basados en el test final.
+5. Definir cualquier mejora posterior como un nuevo experimento temporal independiente.
+
+Esta decisión evita seleccionar el modelo únicamente por un resultado favorable en test y preserva la metodología definida antes de conocer dicho resultado.
+
+## 10.9. Limitaciones observadas y siguientes mejoras
+
+Los resultados muestran que la demanda turística rural presenta una estacionalidad anual muy fuerte y que un modelo más complejo no garantiza una mejora estable.
+
+Las ampliaciones futuras deberán considerar:
+
+- modelos especializados por grupos de provincias;
+- variables de calendario móvil, especialmente Semana Santa;
+- clima y eventos cuando puedan integrarse sin fuga temporal;
+- enfoques estadísticos por provincia;
+- intervalos de predicción basados en errores fuera de muestra;
+- reglas territoriales de fallback;
+- seguimiento separado de datos provisionales;
+- actualización periódica sin reutilizar el test ya abierto para reajustar hiperparámetros.
