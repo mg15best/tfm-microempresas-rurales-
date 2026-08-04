@@ -1,7 +1,7 @@
 dataset:
   name: "gold_modeling_dataset_monthly"
-  planned_path: "data/gold/gold_modeling_dataset_monthly.parquet"
-  status: "planned"
+  path: "data/gold/gold_modeling_dataset_monthly.parquet"
+  status: "implemented"
   description: >
     Dataset temporal preparado para el entrenamiento, validación y backtesting
     de modelos de predicción de pernoctaciones mensuales en alojamientos de

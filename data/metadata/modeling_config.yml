@@ -2,7 +2,7 @@ project:
   name: "Analítica predictiva de demanda turística rural"
   delivery: 4
   purpose: "Definir de forma reproducible la estrategia inicial de modelado temporal"
-  status: "design"
+  status: "implemented"
 
 problem:
   task_type: "forecasting_as_supervised_regression"
@@ -25,7 +25,7 @@ source_dataset:
   expected_territory_level: "province"
 
 modeling_dataset:
-  planned_path: "data/gold/gold_modeling_dataset_monthly.parquet"
+  path: "data/gold/gold_modeling_dataset_monthly.parquet"
   primary_key:
     - "territory_id"
     - "target_month_id"
