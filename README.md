@@ -17,11 +17,13 @@ El objetivo es transformar estadísticas oficiales españolas sobre turismo rura
 * anticipar la demanda turística mensual;
 * generar posteriormente indicadores y recomendaciones operativas explicables.
 
-La variable objetivo principal prevista para el modelado es:
+La variable objetivo principal del modelado es:
 
 ```text
 pernoctaciones mensuales por provincia
 ```
+
+El horizonte implementado es de un mes y la evaluación se realiza mediante backtesting temporal con ventanas expansivas.
 
 ## Estado actual del proyecto
 
@@ -34,30 +36,30 @@ Actualmente están implementados:
 * tabla gold descriptiva;
 * contrato formal de las 64 columnas de la tabla gold;
 * validación automatizada de calidad;
-* informe de calidad;
 * análisis exploratorio en notebook;
-* estrategia de análisis y modelado para la predicción mensual de pernoctaciones;
-* definición del baseline estacional, modelos candidatos, validación temporal, métricas y criterios de selección.
+* dataset específico de modelado con lags calendario y ventanas históricas sin fuga;
+* contrato y validación reproducible del dataset de modelado;
+* baseline estacional `lag_12`;
+* regresión Ridge como candidato interpretable;
+* `HistGradientBoostingRegressor` como candidato flexible;
+* backtesting temporal con ventana expansiva;
+* evaluación final no provisional;
+* métricas globales, territoriales y mensuales;
+* predicciones reproducibles del candidato final.
 
-La estrategia de modelado definida en la Entrega 4 plantea inicialmente:
+Resultado resumido de la Entrega 4:
 
-* variable objetivo: pernoctaciones mensuales por provincia;
-* horizonte inicial: un mes;
-* baseline principal: pernoctaciones del mismo mes del año anterior (`lag_12`);
-* modelo candidato interpretable: regresión Ridge;
-* modelo candidato flexible: boosting de árboles;
-* validación mediante backtesting temporal con ventana expansiva;
-* MAE como métrica principal, complementada con RMSE, WAPE y análisis territorial de errores.
+| Indicador | Resultado |
+|---|---:|
+| Dataset de modelado | 12.691 filas y 37 columnas |
+| Validación del dataset | 53 PASS / 0 WARN / 0 FAIL |
+| MAE baseline en test | 3.045,00 |
+| MAE `hgb_raw_02` en test | 2.760,59 |
+| Mejora de MAE en test | 9,34 % |
+| Provincias mejoradas | 41 de 50 |
+| Mejora agregada en validación | -2,11 % |
 
-Pendiente para las siguientes fases:
-
-* construcción reproducible de features temporales sin fuga de información;
-* generación de `gold_modeling_dataset_monthly.parquet`;
-* implementación del baseline y los modelos candidatos;
-* ejecución del backtesting y evaluación comparativa;
-* generación de previsiones;
-* dashboard;
-* recomendaciones operativas explicables.
+`hgb_raw_02` es el mejor candidato de machine learning y gana en el test final, pero no cumple la regla completa de promoción porque no mejora el baseline de forma agregada y estable en validación. El baseline estacional se mantiene como referencia robusta y mecanismo de fallback.
 
 ## Fuentes utilizadas
 
@@ -70,15 +72,27 @@ La primera versión funcional utiliza la Encuesta de Ocupación en Alojamientos 
 
 Las fuentes de precios, gasto turístico, empresas y climatología se encuentran documentadas como posibles ampliaciones, pero no se integran todavía en el núcleo del MVP.
 
-## Resultado principal
+## Resultados principales
 
-La tabla gold se encuentra en:
+La tabla gold descriptiva se encuentra en:
 
 ```text
 data/gold/gold_tourism_demand_monthly.parquet
 ```
 
-También existe una exportación CSV:
+El dataset específico de modelado se encuentra en:
+
+```text
+data/gold/gold_modeling_dataset_monthly.parquet
+```
+
+Las predicciones reproducibles de validación y test del candidato final se encuentran en:
+
+```text
+data/model_outputs/final_candidate_predictions.parquet
+```
+
+También existe una exportación CSV de la tabla gold descriptiva:
 
 ```text
 data/gold/exports_csv/gold_tourism_demand_monthly.csv
@@ -150,8 +164,16 @@ src/
 │   ├── build_gold.py
 │   └── validate_gold.py
 ├── features/
+│   ├── build_modeling_dataset.py
+│   └── validate_modeling_dataset.py
 ├── models/
+│   ├── evaluate_baseline.py
+│   └── evaluate_final_candidate.py
 └── visualization/
+
+tests/
+├── test_build_gold.py
+└── test_build_modeling_dataset.py
 
 requirements.txt
 README.md
@@ -173,6 +195,7 @@ PyYAML
 matplotlib
 ipykernel
 nbconvert
+scikit-learn
 ```
 
 Las versiones exactas comprobadas se encuentran fijadas en `requirements.txt`. El uso de otras versiones puede funcionar, pero no forma parte del entorno validado en esta entrega.
@@ -202,7 +225,7 @@ Instalar las dependencias dentro del entorno:
 Comprobar la instalación:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, ipykernel, nbconvert; print('Dependencias instaladas correctamente')"
+.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, ipykernel, nbconvert, sklearn; print('Dependencias instaladas correctamente')"
 ```
 
 La carpeta `.venv/` no debe subirse al repositorio.
@@ -264,6 +287,52 @@ En PowerShell puede comprobarse mediante:
 
 ```powershell
 $LASTEXITCODE
+```
+
+### 6. Construir el dataset de modelado
+
+```powershell
+.\.venv\Scripts\python.exe src/features/build_modeling_dataset.py
+```
+
+### 7. Validar el dataset de modelado
+
+```powershell
+.\.venv\Scripts\python.exe src/features/validate_modeling_dataset.py
+```
+
+Una ejecución correcta devuelve código `0` y actualiza:
+
+```text
+data/metadata/modeling_data_quality_report.md
+```
+
+### 8. Evaluar el baseline estacional
+
+```powershell
+.\.venv\Scripts\python.exe src/models/evaluate_baseline.py
+```
+
+### 9. Reproducir la evaluación del candidato final
+
+```powershell
+.\.venv\Scripts\python.exe src/models/evaluate_final_candidate.py
+```
+
+Esta ejecución reproduce los folds de validación y el test final con la configuración congelada `hgb_raw_02`, y genera:
+
+```text
+data/model_outputs/final_candidate_predictions.parquet
+data/metadata/final_candidate_evaluation_report.md
+data/metadata/final_candidate_metrics_by_split.csv
+data/metadata/final_candidate_test_by_territory.csv
+data/metadata/final_candidate_test_by_month.csv
+```
+
+### 10. Ejecutar las pruebas automatizadas
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 ## Análisis exploratorio
@@ -345,22 +414,24 @@ docs/entregas/
 * `01_ideas_producto.md`: definición y selección inicial de la idea.
 * `02_datos_necesarios.md`: identificación y evaluación de datos necesarios.
 * `03_modelo_datos.md`: arquitectura raw, processed y gold, granularidades, claves, calidad y transformaciones.
-* `04_analisis_modelado.md`: problema predictivo, análisis previsto, datos de entrada y salida, baseline, modelos candidatos, validación temporal, métricas, criterios de selección, riesgos y alternativas.
+* `04_analisis_modelado.md`: problema predictivo, dataset de modelado, baseline, modelos candidatos, backtesting temporal, resultados de validación y test, decisión final, limitaciones y alternativas.
 
 ## Limitaciones actuales
 
 * El núcleo actual trabaja únicamente a nivel provincial.
 * La fuente mide alojamientos de turismo rural, no todo el turismo de un territorio.
 * Los datos provisionales pueden ser revisados por el INE.
-* Las variables de precios y gasto todavía no están integradas.
-* El índice de presión turística es una señal relativa y no una medida directa de rentabilidad.
-* Todavía no se ha construido ni evaluado el modelo predictivo.
+* Las variables de precios, gasto, clima y eventos todavía no están integradas.
+* El índice de presión turística es una señal descriptiva y no una medida directa de rentabilidad.
+* El mejor candidato de machine learning no mejora el baseline de forma estable en las tres validaciones.
+* El test final ya se ha abierto y no debe reutilizarse para reajustar hiperparámetros.
+* Todavía no se han implementado intervalos de predicción ni una política operativa de selección por provincia.
 
 ## Siguientes pasos
 
-1. Construir features temporales y lags sin fuga de información.
-2. Generar y validar `gold_modeling_dataset_monthly.parquet`.
-3. Implementar el baseline estacional y los modelos candidatos definidos en la Entrega 4.
-4. Ejecutar el backtesting temporal y comparar MAE, RMSE, WAPE y rendimiento por provincia.
-5. Seleccionar el modelo únicamente si mejora de forma estable el baseline.
-6. Generar las previsiones y desarrollar posteriormente el dashboard y las recomendaciones explicables.
+1. Diseñar el dashboard o aplicación ligera para consultar histórico, baseline, predicción y error territorial.
+2. Incorporar intervalos de predicción calculados con errores fuera de muestra.
+3. Definir reglas de fallback por provincia, mes o temporada.
+4. Analizar el periodo provisional de junio de 2025 a mayo de 2026 como seguimiento separado.
+5. Evaluar nuevas variables o familias de modelos únicamente mediante un nuevo experimento temporal independiente.
+6. Preparar la presentación académica y la demostración reproducible de la Entrega 4.
