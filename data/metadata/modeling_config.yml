@@ -80,6 +80,39 @@ features:
   categorical:
     - "territory_id"
 
+model_inputs:
+  numeric_features:
+    - "year"
+    - "is_summer"
+    - "is_christmas_period"
+    - "covid_period"
+    - "lag_1_overnight_stays"
+    - "lag_3_overnight_stays"
+    - "lag_12_overnight_stays"
+    - "rolling_mean_3m_overnight_stays"
+    - "rolling_mean_12m_overnight_stays"
+    - "yoy_change_overnight_stays"
+    - "lag_1_occupancy_rate_pct"
+    - "lag_12_occupancy_rate_pct"
+    - "lag_1_weekend_occupancy_rate_pct"
+    - "lag_1_average_stay"
+    - "lag_12_average_stay"
+    - "lag_1_domestic_overnight_stays_share"
+    - "lag_1_foreign_overnight_stays_share"
+    - "lag_1_places_estimated"
+    - "lag_1_establishments_estimated"
+    - "lag_1_staff_employed"
+
+  categorical_features:
+    - "territory_id"
+    - "month"
+    - "quarter"
+
+  boolean_features:
+    - "is_summer"
+    - "is_christmas_period"
+    - "covid_period"
+
 optional_future_features:
   - "is_easter_period"
   - "price_index_lag_1"

@@ -1,103 +1,62 @@
-# Selección de modelos mediante validación temporal
+# Selección reproducible de modelos mediante validación temporal
 
-## Alcance
+- **Generado en UTC:** `2026-08-06T16:55:06.579638+00:00`
+- **Dataset:** `data/gold/gold_modeling_dataset_monthly.parquet`
+- **Estrategia:** validación temporal expansiva
+- **Splits de selección:** validation_1, validation_2 y validation_3
+- **Test final utilizado en selección:** no
+- **Filas comparables agregadas:** 1750
+- **Predicciones negativas:** recortadas a cero
 
-Este informe documenta la selección preliminar de modelos realizada
-exclusivamente sobre las tres ventanas de validación temporal.
+## Alcance reproducido
 
-El conjunto de test final no se ha utilizado para ajustar hiperparámetros
-ni para seleccionar el modelo.
+La selección ejecutable compara el baseline estacional, la rejilla
+documentada de Ridge y la configuración congelada `hgb_raw_02`.
 
-- Filas comparables agregadas: 1.750
-- Validaciones: validation_1, validation_2 y validation_3
-- Comparación realizada sobre las mismas filas que el baseline
-- Predicciones negativas recortadas a cero
-- Entrenamiento expansivo en cada ventana temporal
-- Datos provisionales excluidos
+El repositorio histórico no conserva la rejilla completa de
+configuraciones HGB mencionada en la memoria. Por ello este script no
+inventa configuraciones adicionales ni afirma reproducir una búsqueda
+HGB que no quedó registrada.
 
 ## Baseline estacional lag-12
 
-El baseline utiliza como predicción las pernoctaciones observadas en el
-mismo mes del año anterior.
-
-| Métrica agregada | Resultado |
+| Métrica | Resultado |
 |---|---:|
 | MAE | 5.018,64 |
-| Filas | 1.750 |
+| RMSE | 10.411,37 |
+| WAPE | 24,19 % |
+| Sesgo medio | -3.268,00 |
 
-## Ridge
+## Búsqueda de Ridge
 
-Se probaron los siguientes valores de regularización:
-
-- 0,01
-- 0,1
-- 1
-- 10
-- 100
-- 1.000
-
-La mejor configuración fue `alpha=100`.
-
-| Métrica | Resultado |
-|---|---:|
-| MAE | 5.450,77 |
-| MAE baseline | 5.018,64 |
-| Mejora frente al baseline | -8,61 % |
-| RMSE | 10.609,57 |
-| WAPE | 26,27 % |
-| Sesgo medio | -2.844,36 |
-
-Ridge no supera al baseline y queda descartado como modelo candidato
-principal.
-
-## HistGradientBoostingRegressor
-
-La mejor configuración de validación fue `hgb_raw_02`.
-
-| Parámetro | Valor |
-|---|---:|
-| Transformación del target | raw |
-| learning_rate | 0,05 |
-| max_leaf_nodes | 31 |
-| min_samples_leaf | 20 |
-| l2_regularization | 1,0 |
-| max_iter | 300 |
-| random_state | 42 |
-
-### Resultado agregado
-
-| Métrica | Resultado |
-|---|---:|
-| MAE | 5.124,56 |
-| MAE baseline | 5.018,64 |
-| Mejora frente al baseline | -2,11 % |
-| RMSE | 10.499,99 |
-| WAPE | 24,70 % |
-| Sesgo medio | -1.325,48 |
-
-### Resultado por ventana
-
-| Ventana | MAE modelo | MAE baseline | Mejora |
+| Configuración | MAE | RMSE | WAPE |
 |---|---:|---:|---:|
-| validation_1 | 8.081,94 | 9.116,56 | 11,35 % |
-| validation_2 | 4.133,83 | 3.071,71 | -34,58 % |
-| validation_3 | 3.404,34 | 3.209,14 | -6,08 % |
+| ridge_alpha_100 | 5.450,77 | 10.609,57 | 26,27 % |
+| ridge_alpha_10 | 5.515,10 | 10.909,13 | 26,58 % |
+| ridge_alpha_1 | 5.545,07 | 11.005,18 | 26,73 % |
+| ridge_alpha_0_1 | 5.549,41 | 11.017,85 | 26,75 % |
+| ridge_alpha_0_01 | 5.549,86 | 11.019,16 | 26,75 % |
+| ridge_alpha_1000 | 5.566,55 | 10.647,82 | 26,83 % |
 
-HistGradientBoosting mejora claramente durante la recuperación
-pospandemia de `validation_1`, pero empeora en las dos validaciones
-posteriores.
+Mejor Ridge: `ridge_alpha_100`.
 
-## Decisión preliminar
+- MAE: 5.450,77
+- Mejora frente al baseline: -8,61 %
 
-Ninguno de los modelos candidatos supera al baseline de forma agregada
-en las tres ventanas de validación.
+## HistGradientBoosting congelado
 
-Por tanto:
+Configuración evaluada: `hgb_raw_02`.
 
-1. El baseline estacional lag-12 permanece como modelo de referencia y
-   campeón provisional.
-2. Ridge queda descartado.
-3. `hgb_raw_02` se conserva como mejor candidato no lineal.
-4. El conjunto de test permanece intacto hasta la evaluación final.
-5. La decisión definitiva deberá considerar también la estabilidad
-   territorial, el comportamiento por mes y la evaluación final en test.
+- MAE: 5.124,56
+- RMSE: 10.499,99
+- WAPE: 24,70 %
+- Sesgo medio: -1.325,48
+- Mejora frente al baseline: -2,11 %
+
+## Decisión de validación
+
+- Mejor candidato de machine learning: `hgb_raw_02`
+- Mejora agregada del mejor candidato: -2,11 %
+- Solución seleccionada tras validación: `seasonal_naive_lag_12`
+
+El conjunto de test permanece excluido de este proceso.
