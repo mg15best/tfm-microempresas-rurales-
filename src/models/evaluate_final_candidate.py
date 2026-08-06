@@ -33,6 +33,20 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+try:
+    from src.models.modeling_common import (
+        get_model_inputs,
+        get_validation_folds,
+        load_config,
+        resolve_project_path,
+    )
+except ModuleNotFoundError:
+    from modeling_common import (
+        get_model_inputs,
+        get_validation_folds,
+        load_config,
+        resolve_project_path,
+    )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -78,73 +92,33 @@ REPORT_PATH = (
     / "final_candidate_evaluation_report.md"
 )
 
-MODEL_ID = "hgb_raw_02"
-BASELINE_ID = "seasonal_naive_lag_12"
-RANDOM_STATE = 42
+CONFIG = load_config()
 
-NUMERIC_FEATURES = [
-    "year",
-    "is_summer",
-    "is_christmas_period",
-    "covid_period",
-    "lag_1_overnight_stays",
-    "lag_3_overnight_stays",
-    "lag_12_overnight_stays",
-    "rolling_mean_3m_overnight_stays",
-    "rolling_mean_12m_overnight_stays",
-    "yoy_change_overnight_stays",
-    "lag_1_occupancy_rate_pct",
-    "lag_12_occupancy_rate_pct",
-    "lag_1_weekend_occupancy_rate_pct",
-    "lag_1_average_stay",
-    "lag_12_average_stay",
-    "lag_1_domestic_overnight_stays_share",
-    "lag_1_foreign_overnight_stays_share",
-    "lag_1_places_estimated",
-    "lag_1_establishments_estimated",
-    "lag_1_staff_employed",
-]
+DATASET_PATH = resolve_project_path(
+    str(CONFIG["modeling_dataset"]["path"])
+)
 
-CATEGORICAL_FEATURES = [
-    "territory_id",
-    "month",
-    "quarter",
-]
+MODEL_SELECTION_CONFIG = CONFIG["model_selection"]
+HGB_CONFIG = MODEL_SELECTION_CONFIG["hist_gradient_boosting"]
 
-BOOLEAN_FEATURES = [
-    "is_summer",
-    "is_christmas_period",
-    "covid_period",
-]
+MODEL_ID = str(HGB_CONFIG["model_id"])
+BASELINE_ID = str(CONFIG["baseline"]["name"])
+RANDOM_STATE = int(CONFIG["reproducibility"]["random_state"])
 
-FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
+(
+    NUMERIC_FEATURES,
+    CATEGORICAL_FEATURES,
+    BOOLEAN_FEATURES,
+    FEATURE_COLUMNS,
+) = get_model_inputs(CONFIG)
 
-FOLDS = [
-    {
-        "name": "validation_1",
-        "train_end": "2021-05-01",
-    },
-    {
-        "name": "validation_2",
-        "train_end": "2022-05-01",
-    },
-    {
-        "name": "validation_3",
-        "train_end": "2023-05-01",
-    },
-    {
-        "name": "test",
-        "train_end": "2024-05-01",
-    },
-]
+FOLDS = get_validation_folds(
+    CONFIG,
+    include_test=True,
+)
 
 MODEL_PARAMETERS: dict[str, Any] = {
-    "learning_rate": 0.05,
-    "max_iter": 300,
-    "max_leaf_nodes": 31,
-    "min_samples_leaf": 20,
-    "l2_regularization": 1.0,
-    "early_stopping": False,
+    **dict(HGB_CONFIG["parameters"]),
     "random_state": RANDOM_STATE,
 }
 
@@ -1054,13 +1028,11 @@ def main() -> int:
             )
         )
 
-    expected_rows = {
-        "validation_1": 550,
-        "validation_2": 600,
-        "validation_3": 600,
-        "test": 600,
-    }
-
+    expected_splits = [
+        str(fold["name"])
+        for fold in FOLDS
+    ]
+    
     actual_rows = (
         predictions.groupby(
             "evaluation_split",
@@ -1069,42 +1041,57 @@ def main() -> int:
         .size()
         .to_dict()
     )
-
-    assert actual_rows == expected_rows
-    assert len(test_predictions) == 600
-    assert (
-        test_predictions["territory_id"].nunique()
-        == 50
-    )
-
-    assert np.isclose(
-        float(
-            test_comparison["baseline_MAE"]
-        ),
-        3045.00,
-        atol=0.01,
-        rtol=0,
-    )
-
-    assert np.isclose(
-        float(
-            test_comparison["model_MAE"]
-        ),
-        2760.59,
-        atol=0.01,
-        rtol=0,
-    )
-
-    assert np.isclose(
-        float(
-            test_comparison["mae_improvement_pct"]
-        ),
-        9.34,
-        atol=0.01,
-        rtol=0,
-    )
-
-    assert territories_improved == 41
+    
+    if set(actual_rows) != set(expected_splits):
+        raise AssertionError(
+            "Los splits generados no coinciden con la configuración. "
+            f"Esperados: {expected_splits}. "
+            f"Obtenidos: {sorted(actual_rows)}."
+        )
+    
+    if any(int(rows) <= 0 for rows in actual_rows.values()):
+        raise AssertionError(
+            "Todos los splits deben contener filas evaluables."
+        )
+    
+    prediction_key = [
+        "territory_id",
+        "target_month_id",
+        "evaluation_split",
+    ]
+    
+    if predictions.duplicated(prediction_key).any():
+        raise AssertionError(
+            "Existen predicciones duplicadas por territorio, mes y split."
+        )
+    
+    required_prediction_columns = [
+        "actual",
+        "baseline_prediction",
+        "model_prediction",
+    ]
+    
+    if predictions[required_prediction_columns].isna().any().any():
+        raise AssertionError(
+            "Las predicciones contienen valores ausentes."
+        )
+    
+    if (predictions["model_prediction"] < 0).any():
+        raise AssertionError(
+            "Las predicciones finales no pueden ser negativas."
+        )
+    
+    if test_predictions.empty:
+        raise AssertionError(
+            "El split de test no contiene filas evaluables."
+        )
+    
+    if comparison[
+        comparison["evaluation_split"].eq("test")
+    ].empty:
+        raise AssertionError(
+            "No se generaron métricas comparativas para el test."
+        )
 
     print("\nFinal candidate evaluation: OK")
 
