@@ -162,8 +162,38 @@ metrics:
     - "territories_improved_vs_baseline_pct"
 
 model_selection:
+  selection_splits:
+    - "validation_1"
+    - "validation_2"
+    - "validation_3"
+
+  exclude_final_test_from_selection: true
   compare_on_same_rows: true
   compare_on_same_folds: true
+  clip_negative_predictions_to_zero: true
+
+  ridge:
+    model_id: "ridge"
+    target_transform: "raw"
+    alpha_values:
+      - 0.01
+      - 0.1
+      - 1.0
+      - 10.0
+      - 100.0
+      - 1000.0
+
+  hist_gradient_boosting:
+    model_id: "hgb_raw_02"
+    target_transform: "raw"
+    parameters:
+      learning_rate: 0.05
+      max_iter: 300
+      max_leaf_nodes: 31
+      min_samples_leaf: 20
+      l2_regularization: 1.0
+      early_stopping: false
+
   minimum_mae_improvement_pct: 5.0
   require_final_test_improvement: true
   require_majority_territories_improved: true
