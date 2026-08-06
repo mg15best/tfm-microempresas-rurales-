@@ -3,7 +3,7 @@
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
 - **Modelo:** `seasonal_naive_lag_12`
 - **Predicción:** pernoctaciones del mismo mes del año anterior
-- **Generado en UTC:** `2026-08-03T12:25:12.032459+00:00`
+- **Generado en UTC:** `2026-08-06T17:15:47.015303+00:00`
 - **Filas evaluadas:** 2,350
 - **MAE global:** 4,514.73
 - **RMSE global:** 9,366.05

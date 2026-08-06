@@ -286,7 +286,7 @@ filas evaluables y las mismas particiones temporales.
 def main() -> int:
     """Ejecuta la evaluación reproducible del baseline."""
     config = load_config()
-    dataset_path = resolve_project_path(config["modeling_dataset"]["planned_path"])
+    dataset_path = resolve_project_path(config["modeling_dataset"]["path"])
 
     if not dataset_path.exists():
         raise FileNotFoundError(
