@@ -1370,7 +1370,9 @@ La validación reproducible del dataset terminó con:
 62 PASS / 0 WARN / 0 FAIL
 ```
 
-Las pruebas automatizadas verifican que los lags buscan el mes calendario exacto, que los huecos no se sustituyen por cero y que las medias móviles excluyen el mes objetivo y requieren ventanas completas.
+La suite automatizada contiene 12 pruebas que cubren la construcción temporal del dataset y utilidades compartidas de modelado. Entre otros controles, verifica que los lags buscan el mes calendario exacto, que los huecos no se sustituyen por cero, que las medias móviles excluyen el mes objetivo y requieren ventanas completas, y que la configuración de inputs, folds, filas comparables y métricas de modelado mantiene el comportamiento esperado.
+
+Las dependencias de desarrollo se declaran en `requirements-dev.txt` y la suite se ejecuta también automáticamente mediante GitHub Actions en cada `push` y `pull_request` sobre `main`.
 
 ## 10.3. Cobertura común de evaluación
 

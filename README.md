@@ -331,9 +331,19 @@ data/metadata/final_candidate_test_by_month.csv
 
 ### 10. Ejecutar las pruebas automatizadas
 
+Instalar las dependencias de desarrollo:
+
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+python -m pip install -r requirements-dev.txt
 ```
+
+Ejecutar la suite:
+
+```powershell
+python -m pytest -q
+```
+
+La suite actual contiene 12 pruebas automatizadas y se ejecuta también mediante GitHub Actions en cada `push` y `pull_request` sobre `main`.
 
 ## Análisis exploratorio
 
