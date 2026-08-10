@@ -758,6 +758,21 @@ def write_report(
         ]
     )
 
+    configuration_rows = [
+        ["target_transform", HGB_CONFIG.get("target_transform", "raw")],
+        *[
+            [parameter, value]
+            for parameter, value in MODEL_PARAMETERS.items()
+        ],
+    ]
+
+    configuration_table = markdown_table(
+        pd.DataFrame(
+            configuration_rows,
+            columns=["Parámetro", "Valor"],
+        )
+    )
+
     report = f"""# Evaluación final del candidato HistGradientBoosting
 
 - **Dataset:** `{DATASET_PATH.relative_to(PROJECT_ROOT)}`
@@ -770,16 +785,7 @@ def write_report(
 
 ## Configuración congelada
 
-| Parámetro | Valor |
-|---|---:|
-| target_transform | raw |
-| learning_rate | 0,05 |
-| max_iter | 300 |
-| max_leaf_nodes | 31 |
-| min_samples_leaf | 20 |
-| l2_regularization | 1,0 |
-| early_stopping | False |
-| random_state | 42 |
+{configuration_table}
 
 La configuración fue seleccionada exclusivamente con las tres ventanas de
 validación. El test final no se utilizó para modificar hiperparámetros,

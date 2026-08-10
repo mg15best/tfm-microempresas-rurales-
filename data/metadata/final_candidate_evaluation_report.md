@@ -3,7 +3,7 @@
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
 - **Candidato:** `hgb_raw_02`
 - **Baseline:** `seasonal_naive_lag_12`
-- **Generado en UTC:** `2026-08-06T17:29:45.846839+00:00`
+- **Generado en UTC:** `2026-08-10T09:33:41.311257+00:00`
 - **Filas de test:** 600
 - **Periodo de test:** 2024-06 → 2025-05
 - **Territorios de test:** 50
@@ -11,13 +11,13 @@
 ## Configuración congelada
 
 | Parámetro | Valor |
-|---|---:|
+| --- | --- |
 | target_transform | raw |
-| learning_rate | 0,05 |
+| learning_rate | 0.05 |
 | max_iter | 300 |
 | max_leaf_nodes | 31 |
 | min_samples_leaf | 20 |
-| l2_regularization | 1,0 |
+| l2_regularization | 1.00 |
 | early_stopping | False |
 | random_state | 42 |
 
