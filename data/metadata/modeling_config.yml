@@ -199,7 +199,6 @@ model_selection:
     - "validation_1"
     - "validation_2"
     - "validation_3"
-  fit_preprocessing_on_train_only: true
   exclude_final_test_from_selection: true
   compare_on_same_rows: true
   compare_on_same_folds: true
