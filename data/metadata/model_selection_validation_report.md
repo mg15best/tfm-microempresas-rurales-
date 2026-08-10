@@ -1,6 +1,6 @@
 # Selección reproducible de modelos mediante validación temporal
 
-- **Generado en UTC:** `2026-08-06T16:55:06.579638+00:00`
+- **Generado en UTC:** `2026-08-10T11:33:10.330284+00:00`
 - **Dataset:** `data/gold/gold_modeling_dataset_monthly.parquet`
 - **Estrategia:** validación temporal expansiva
 - **Splits de selección:** validation_1, validation_2 y validation_3

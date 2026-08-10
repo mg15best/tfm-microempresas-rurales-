@@ -173,9 +173,13 @@ def evaluate_model_fold(
     train_end = pd.Timestamp(fold["train_end"])
 
     target_column = str(config["target"]["column"])
+
     baseline_column = str(
         config["baseline"]["prediction_feature"]
     )
+
+    baseline_id = str(config["baseline"]["name"])
+    dataset_path = str(config["modeling_dataset"]["path"])
 
     _, _, _, feature_columns = get_model_inputs(config)
 
@@ -250,10 +254,16 @@ def evaluate_model_fold(
             "target_month_id",
             "target_date_month",
             "evaluation_split",
+            "source_snapshot_id",
+            "pipeline_run_id",
+            "data_version",
+            "created_at",
         ]
     ].copy()
 
     predictions["model"] = model_id
+    predictions["baseline_id"] = baseline_id
+    predictions["dataset_path"] = dataset_path
     predictions["actual"] = actual
     predictions["baseline_prediction"] = baseline_prediction
     predictions["model_prediction_raw"] = prediction_raw
