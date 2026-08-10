@@ -3,7 +3,7 @@
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
 - **Candidato:** `hgb_raw_02`
 - **Baseline:** `seasonal_naive_lag_12`
-- **Generado en UTC:** `2026-08-10T09:40:06.876146+00:00`
+- **Generado en UTC:** `2026-08-10T10:41:18.403704+00:00`
 - **Filas de test:** 600
 - **Periodo de test:** 2024-06 → 2025-05
 - **Territorios de test:** 50

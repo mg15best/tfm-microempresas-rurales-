@@ -355,6 +355,10 @@ def evaluate_fold(
             "month",
             "quarter",
             "evaluation_split",
+            "source_snapshot_id",
+            "pipeline_run_id",
+            "data_version",
+            "created_at",
         ]
     ].copy()
 
