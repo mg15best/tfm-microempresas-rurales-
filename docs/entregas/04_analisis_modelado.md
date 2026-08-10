@@ -1327,7 +1327,6 @@ data/metadata/baseline_metrics_by_month.csv
 data/metadata/baseline_metrics_by_season.csv
 data/metadata/model_selection_validation_report.md
 data/metadata/final_model_evaluation_report.md
-data/metadata/final_candidate_evaluation_report.md
 data/metadata/final_candidate_metrics_by_split.csv
 data/metadata/final_candidate_test_by_territory.csv
 data/metadata/final_candidate_test_by_month.csv
