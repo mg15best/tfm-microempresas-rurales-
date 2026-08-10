@@ -358,6 +358,12 @@ def evaluate_fold(
         ]
     ].copy()
 
+    predictions["model_id"] = MODEL_ID
+    predictions["baseline_id"] = BASELINE_ID
+    predictions["dataset_path"] = str(
+        DATASET_PATH.relative_to(PROJECT_ROOT)
+    )
+
     predictions["actual"] = actual
     predictions["baseline_prediction"] = baseline_prediction
     predictions["model_prediction_raw"] = model_prediction_raw
