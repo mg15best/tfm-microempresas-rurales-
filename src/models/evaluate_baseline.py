@@ -117,6 +117,7 @@ def calculate_metrics(group: pd.DataFrame) -> pd.Series:
 def calculate_summary_metrics(
     evaluation: pd.DataFrame,
     split_names: list[str],
+    model_id: str,
 ) -> pd.DataFrame:
     """Calcula métricas por split y globales."""
     by_split = (
@@ -131,7 +132,7 @@ def calculate_summary_metrics(
     overall.insert(0, "split", "overall")
 
     summary = pd.concat([by_split, overall], ignore_index=True)
-    summary.insert(0, "model", "seasonal_naive_lag_12")
+    summary.insert(0, "model", model_id)
     summary["rows"] = summary["rows"].round().astype("int64")
     return summary
 
@@ -160,6 +161,7 @@ def add_season(dataframe: pd.DataFrame) -> pd.DataFrame:
 def grouped_metrics(
     evaluation: pd.DataFrame,
     group_columns: list[str],
+    model_id: str,
 ) -> pd.DataFrame:
     """Calcula métricas para una agrupación."""
     metrics = (
@@ -167,7 +169,7 @@ def grouped_metrics(
         .apply(calculate_metrics, include_groups=False)
         .reset_index()
     )
-    metrics.insert(0, "model", "seasonal_naive_lag_12")
+    metrics.insert(0, "model", model_id)
     metrics["rows"] = metrics["rows"].round().astype("int64")
     return metrics
 
@@ -198,6 +200,8 @@ def write_report(
     summary: pd.DataFrame,
     coverage: pd.DataFrame,
     by_month: pd.DataFrame,
+    model_id: str,
+    prediction_column: str,
 ) -> None:
     """Genera el informe Markdown del baseline."""
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -225,7 +229,7 @@ def write_report(
     report = f"""# Evaluación del baseline estacional lag-12
 
 - **Dataset:** `{dataset_path.relative_to(PROJECT_ROOT)}`
-- **Modelo:** `seasonal_naive_lag_12`
+- **Modelo:** `{model_id}`
 - **Predicción:** pernoctaciones del mismo mes del año anterior
 - **Generado en UTC:** `{generated_at}`
 - **Filas evaluadas:** {int(overall['rows']):,}
@@ -238,7 +242,7 @@ def write_report(
 
 {markdown_table(coverage_table, float_decimals=0)}
 
-Las filas sin `lag_12_overnight_stays` se excluyen porque el baseline no puede
+Las filas sin `{prediction_column}` se excluyen porque el baseline no puede
 generar una predicción válida. No se imputan como cero ni se sustituyen por
 otra observación disponible.
 
@@ -302,6 +306,7 @@ def main() -> int:
     split_names = evaluation_split_names(config)
     target_column = str(config["target"]["column"])
     prediction_column = str(config["baseline"]["prediction_feature"])
+    model_id = str(config["baseline"]["name"])
 
     evaluation, coverage = prepare_evaluation_rows(
         dataframe,
@@ -315,11 +320,31 @@ def main() -> int:
     if evaluation["is_provisional"].fillna(False).any():
         raise ValueError("La evaluación contiene filas provisionales.")
 
-    summary = calculate_summary_metrics(evaluation, split_names)
+    summary = calculate_summary_metrics(
+        evaluation,
+        split_names,
+        model_id,
+    )
+
     evaluation = add_season(evaluation)
-    by_territory = grouped_metrics(evaluation, ["territory_id", "territory_name"])
-    by_month = grouped_metrics(evaluation, ["month"])
-    by_season = grouped_metrics(evaluation, ["season"])
+
+    by_territory = grouped_metrics(
+        evaluation,
+        ["territory_id", "territory_name"],
+        model_id,
+    )
+
+    by_month = grouped_metrics(
+        evaluation,
+        ["month"],
+        model_id,
+    )
+
+    by_season = grouped_metrics(
+        evaluation,
+        ["season"],
+        model_id,
+    )
 
     SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(SUMMARY_PATH, index=False, encoding="utf-8", float_format="%.6f")
@@ -333,6 +358,8 @@ def main() -> int:
         summary=summary,
         coverage=coverage,
         by_month=by_month,
+        model_id=model_id,
+        prediction_column=prediction_column,
     )
 
     print("Baseline estacional evaluado correctamente.")
