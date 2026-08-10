@@ -286,6 +286,10 @@ def main() -> int:
     if dataframe.empty:
         raise ValueError("El dataset de modelado está vacío.")
 
+    target_column = str(config["target"]["column"])
+    prediction_column = str(config["baseline"]["prediction_feature"])
+    model_id = str(config["baseline"]["name"])
+
     required_columns = {
         "territory_id",
         "territory_name",
@@ -294,8 +298,9 @@ def main() -> int:
         "month",
         "evaluation_split",
         "is_provisional",
-        "target_overnight_stays_total",
-        "lag_12_overnight_stays",
+        target_column,
+        prediction_column,
+        
     }
     missing_columns = required_columns.difference(dataframe.columns)
     if missing_columns:
@@ -304,9 +309,6 @@ def main() -> int:
         )
 
     split_names = evaluation_split_names(config)
-    target_column = str(config["target"]["column"])
-    prediction_column = str(config["baseline"]["prediction_feature"])
-    model_id = str(config["baseline"]["name"])
 
     evaluation, coverage = prepare_evaluation_rows(
         dataframe,

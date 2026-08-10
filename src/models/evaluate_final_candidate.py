@@ -100,9 +100,15 @@ DATASET_PATH = resolve_project_path(
 
 MODEL_SELECTION_CONFIG = CONFIG["model_selection"]
 HGB_CONFIG = MODEL_SELECTION_CONFIG["hist_gradient_boosting"]
+VALIDATION_SPLITS = [
+    str(split)
+    for split in MODEL_SELECTION_CONFIG["selection_splits"]
+]
 
 MODEL_ID = str(HGB_CONFIG["model_id"])
 BASELINE_ID = str(CONFIG["baseline"]["name"])
+TARGET_COLUMN = str(CONFIG["target"]["column"])
+BASELINE_COLUMN = str(CONFIG["baseline"]["prediction_feature"])
 RANDOM_STATE = int(CONFIG["reproducibility"]["random_state"])
 
 (
@@ -145,8 +151,8 @@ def load_dataset() -> pd.DataFrame:
         "quarter",
         "evaluation_split",
         "is_provisional",
-        "target_overnight_stays_total",
-        "lag_12_overnight_stays",
+        TARGET_COLUMN,
+        BASELINE_COLUMN,
         *FEATURE_COLUMNS,
     }
 
@@ -293,19 +299,19 @@ def evaluate_fold(
     X_train = train[FEATURE_COLUMNS]
 
     y_train = pd.to_numeric(
-        train["target_overnight_stays_total"],
+        train[TARGET_COLUMN],
         errors="raise",
     ).to_numpy(dtype=float)
 
     X_evaluation = evaluation[FEATURE_COLUMNS]
 
     actual = pd.to_numeric(
-        evaluation["target_overnight_stays_total"],
+        evaluation[TARGET_COLUMN],
         errors="raise",
     ).to_numpy(dtype=float)
 
     baseline_prediction = pd.to_numeric(
-        evaluation["lag_12_overnight_stays"],
+        evaluation[BASELINE_COLUMN],
         errors="raise",
     ).to_numpy(dtype=float)
 
@@ -405,14 +411,8 @@ def add_pooled_validation_metrics(
 ) -> None:
     """Añade las métricas agregadas de las tres validaciones."""
     validation = predictions[
-        predictions["evaluation_split"].isin(
-            [
-                "validation_1",
-                "validation_2",
-                "validation_3",
-            ]
-        )
-    ].copy()
+    predictions["evaluation_split"].isin(VALIDATION_SPLITS)
+].copy()
 
     for model_id, prediction_column in [
         (
@@ -865,8 +865,8 @@ def main() -> int:
     dataframe = load_dataset()
 
     common_evaluable = (
-        dataframe["target_overnight_stays_total"].notna()
-        & dataframe["lag_12_overnight_stays"].notna()
+        dataframe[TARGET_COLUMN].notna()
+        & dataframe[BASELINE_COLUMN].notna()
         & ~dataframe["is_provisional"].fillna(False)
     )
 
