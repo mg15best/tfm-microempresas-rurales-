@@ -1,12 +1,12 @@
 # Informe de calidad del dataset de modelado
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
-- **Generado en UTC:** `2026-08-10T09:08:13.665227+00:00`
+- **Generado en UTC:** `2026-08-10T10:36:35.169984+00:00`
 - **Filas:** 12,691
 - **Columnas:** 37
 - **Territorios:** 50
 - **Periodo:** 2005-01 → 2026-05
-- **Resultado:** 56 PASS / 0 WARN / 0 FAIL
+- **Resultado:** 62 PASS / 0 WARN / 0 FAIL
 
 ## Distribución temporal
 
@@ -77,6 +77,12 @@
 | calendar_lag::lag_12_occupancy_rate_pct | PASS | error | Diferencias respecto al mes exacto: 0. |
 | calendar_lag::lag_1_average_stay | PASS | error | Diferencias respecto al mes exacto: 0. |
 | calendar_lag::lag_12_average_stay | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_weekend_occupancy_rate_pct | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_domestic_overnight_stays_share | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_foreign_overnight_stays_share | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_places_estimated | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_establishments_estimated | PASS | error | Diferencias respecto al mes exacto: 0. |
+| calendar_lag::lag_1_staff_employed | PASS | error | Diferencias respecto al mes exacto: 0. |
 | calendar_rolling::rolling_mean_3m_overnight_stays | PASS | error | Diferencias respecto a la ventana calendárica completa: 0. |
 | calendar_rolling::rolling_mean_12m_overnight_stays | PASS | error | Diferencias respecto a la ventana calendárica completa: 0. |
 | historical_yoy_change | PASS | error | Diferencias respecto a t-1 frente a t-13: 0. |

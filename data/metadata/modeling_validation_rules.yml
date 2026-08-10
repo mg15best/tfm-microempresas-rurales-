@@ -144,6 +144,30 @@ validation:
         source: "average_stay"
         offset_months: 12
 
+      - feature: "lag_1_weekend_occupancy_rate_pct"
+        source: "weekend_occupancy_rate_pct"
+        offset_months: 1
+
+      - feature: "lag_1_domestic_overnight_stays_share"
+        source: "domestic_overnight_stays_share"
+        offset_months: 1
+
+      - feature: "lag_1_foreign_overnight_stays_share"
+        source: "foreign_overnight_stays_share"
+        offset_months: 1
+
+      - feature: "lag_1_places_estimated"
+        source: "places_estimated"
+        offset_months: 1
+
+      - feature: "lag_1_establishments_estimated"
+        source: "establishments_estimated"
+        offset_months: 1
+
+      - feature: "lag_1_staff_employed"
+        source: "staff_employed"
+        offset_months: 1
+
   rolling_rules:
     - feature: "rolling_mean_3m_overnight_stays"
       source: "overnight_stays_total"
