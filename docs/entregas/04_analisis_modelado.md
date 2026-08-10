@@ -1512,6 +1512,14 @@ La decisión final es:
 
 Esta decisión evita seleccionar el modelo únicamente por un resultado favorable en test y preserva la metodología definida antes de conocer dicho resultado.
 
+Por coherencia con esta decisión, no se serializa ni publica `hgb_raw_02`
+como artefacto de producción. El candidato permanece reproducible mediante
+el pipeline y la configuración versionados en el repositorio, pero no se
+presenta como modelo desplegable mientras no satisfaga los criterios de
+promoción definidos. Si una futura iteración supera dichos criterios, la
+serialización y el pipeline de inferencia deberán incorporarse como parte
+de esa nueva fase, sin reutilizar el test actual para ajustar el modelo.
+
 ## 10.9. Limitaciones observadas y siguientes mejoras
 
 Los resultados muestran que la demanda turística rural presenta una estacionalidad anual muy fuerte y que un modelo más complejo no garantiza una mejora estable.
