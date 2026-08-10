@@ -1326,7 +1326,6 @@ data/metadata/baseline_metrics_by_territory.csv
 data/metadata/baseline_metrics_by_month.csv
 data/metadata/baseline_metrics_by_season.csv
 data/metadata/model_selection_validation_report.md
-data/metadata/final_model_evaluation_report.md
 data/metadata/final_candidate_metrics_by_split.csv
 data/metadata/final_candidate_test_by_territory.csv
 data/metadata/final_candidate_test_by_month.csv
@@ -1368,7 +1367,7 @@ La clasificación de calidad de las filas es:
 La validación reproducible del dataset terminó con:
 
 ```text
-53 PASS / 0 WARN / 0 FAIL
+62 PASS / 0 WARN / 0 FAIL
 ```
 
 Las pruebas automatizadas verifican que los lags buscan el mes calendario exacto, que los huecos no se sustituyen por cero y que las medias móviles excluyen el mes objetivo y requieren ventanas completas.

@@ -766,7 +766,7 @@ def write_output(
     """Guarda el dataset de modelado en Parquet."""
     output_path = resolve_project_path(
         config.get("modeling_dataset", {}).get(
-            "planned_path", ""
+            "path", ""
         ),
         DEFAULT_OUTPUT_PATH,
     )

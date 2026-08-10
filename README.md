@@ -52,7 +52,7 @@ Resultado resumido de la Entrega 4:
 | Indicador | Resultado |
 |---|---:|
 | Dataset de modelado | 12.691 filas y 37 columnas |
-| Validación del dataset | 53 PASS / 0 WARN / 0 FAIL |
+| Validación del dataset | 62 PASS / 0 WARN / 0 FAIL |
 | MAE baseline en test | 3.045,00 |
 | MAE `hgb_raw_02` en test | 2.760,59 |
 | Mejora de MAE en test | 9,34 % |
