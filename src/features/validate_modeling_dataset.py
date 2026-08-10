@@ -26,6 +26,12 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RULES_PATH = PROJECT_ROOT / "data" / "metadata" / "modeling_validation_rules.yml"
+MODELING_CONFIG_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "modeling_config.yml"
+)
 SOURCE_PATH = PROJECT_ROOT / "data" / "gold" / "gold_tourism_demand_monthly.parquet"
 REPORT_PATH = PROJECT_ROOT / "data" / "metadata" / "modeling_data_quality_report.md"
 
@@ -401,6 +407,7 @@ def validate_dates_and_splits(
     )
 
     split_rules = rules["validation"]["split_rules"]
+    total_split_mismatches = 0
 
     for split_name, split_rule in split_rules.items():
         start = pd.Timestamp(f"{split_rule['start']}-01")
@@ -412,12 +419,31 @@ def validate_dates_and_splits(
         actual = modeling["evaluation_split"].eq(split_name)
         expected = modeling["target_date_month"].between(start, end)
         mismatch = int(actual.ne(expected).sum())
+        total_split_mismatches += mismatch
 
         add_result(
             results,
             f"split_dates::{split_name}",
             mismatch == 0,
             f"Filas asignadas incorrectamente: {mismatch}.",
+        )
+
+    if rules["validation"]["leakage_controls"].get(
+        "prohibit_random_split",
+        False,
+    ):
+        add_result(
+            results,
+            "prohibit_random_split",
+            total_split_mismatches == 0,
+            (
+                "Los splits siguen exclusivamente ventanas temporales "
+                "predefinidas; no se detecta partición aleatoria."
+                if total_split_mismatches == 0
+                else "Se detectaron "
+                f"{total_split_mismatches} asignaciones incompatibles "
+                "con las ventanas temporales."
+            ),
         )
 
     provisional_monitoring = modeling[
@@ -471,6 +497,37 @@ def validate_temporal_features(
     results: list[dict[str, str]],
 ) -> None:
     validation = rules["validation"]
+    if validation["leakage_controls"].get(
+        "require_historical_features_before_target",
+        False,
+    ):
+        lag_offsets = [
+            int(rule["offset_months"])
+            for rule in validation["temporal_integrity"]["lag_rules"]
+        ]
+
+        rolling_offsets = [
+            int(rule["minimum_offset_months"])
+            for rule in validation["rolling_rules"]
+        ]
+
+        historical_only = (
+            all(offset > 0 for offset in lag_offsets)
+            and all(offset > 0 for offset in rolling_offsets)
+        )
+
+        add_result(
+            results,
+            "historical_features_before_target",
+            historical_only,
+            (
+                "Todos los lags y ventanas móviles utilizan únicamente "
+                "meses anteriores al mes objetivo."
+                if historical_only
+                else "Existe al menos una variable temporal que utiliza "
+                "el mes objetivo o información futura."
+            ),
+        )
     tolerance = float(validation["numeric_tolerance"])
 
     for lag_rule in validation["temporal_integrity"]["lag_rules"]:
@@ -581,6 +638,49 @@ def validate_temporal_features(
         f"Diferencias respecto a t-1 frente a t-13: {differences}.",
     )
 
+def validate_forbidden_predictors(
+    rules: dict[str, Any],
+    modeling_config: dict[str, Any],
+    results: list[dict[str, str]],
+) -> None:
+    leakage_controls = rules["validation"]["leakage_controls"]
+    model_inputs = modeling_config["model_inputs"]
+
+    predictors: set[str] = set()
+
+    for group in [
+        "numeric_features",
+        "categorical_features",
+        "boolean_features",
+    ]:
+        predictors.update(
+            str(column)
+            for column in model_inputs.get(group, [])
+        )
+
+    forbidden = {
+        str(column)
+        for column in leakage_controls.get(
+            "forbidden_predictors",
+            [],
+        )
+    }
+
+    forbidden_used = sorted(
+        predictors.intersection(forbidden)
+    )
+
+    add_result(
+        results,
+        "forbidden_predictors_absent",
+        not forbidden_used,
+        (
+            "Ningún predictor configurado pertenece a la lista prohibida."
+            if not forbidden_used
+            else "Predictores prohibidos utilizados: "
+            + ", ".join(forbidden_used)
+        ),
+    )
 
 def validate_traceability(
     modeling: pd.DataFrame,
@@ -711,6 +811,7 @@ def write_report(
 
 def main() -> int:
     rules = load_yaml(RULES_PATH)
+    modeling_config = load_yaml(MODELING_CONFIG_PATH)
     dataset_path = resolve_project_path(
         rules["dataset"]["path"]
     )
@@ -746,6 +847,12 @@ def main() -> int:
     )
 
     results: list[dict[str, str]] = []
+
+    validate_forbidden_predictors(
+        rules,
+        modeling_config,
+        results,
+    )
 
     complete_structure = validate_structure(
         modeling,

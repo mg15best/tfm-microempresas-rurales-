@@ -172,7 +172,6 @@ validation:
       - "is_provisional"
 
     require_historical_features_before_target: true
-    require_preprocessing_fit_on_train_only: true
     prohibit_random_split: true
 
   split_rules:

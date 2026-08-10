@@ -1,12 +1,12 @@
 # Informe de calidad del dataset de modelado
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
-- **Generado en UTC:** `2026-08-03T09:18:59.955056+00:00`
+- **Generado en UTC:** `2026-08-10T09:08:13.665227+00:00`
 - **Filas:** 12,691
 - **Columnas:** 37
 - **Territorios:** 50
 - **Periodo:** 2005-01 → 2026-05
-- **Resultado:** 53 PASS / 0 WARN / 0 FAIL
+- **Resultado:** 56 PASS / 0 WARN / 0 FAIL
 
 ## Distribución temporal
 
@@ -32,6 +32,7 @@
 
 | Control | Estado | Severidad | Detalle |
 | --- | --- | --- | --- |
+| forbidden_predictors_absent | PASS | error | Ningún predictor configurado pertenece a la lista prohibida. |
 | required_columns | PASS | error | Todas las columnas obligatorias están presentes. |
 | modeling_key_not_null | PASS | error | Filas con clave nula: 0. |
 | unique_modeling_key | PASS | error | Claves duplicadas: 0. |
@@ -65,8 +66,10 @@
 | split_dates::validation_3 | PASS | error | Filas asignadas incorrectamente: 0. |
 | split_dates::test | PASS | error | Filas asignadas incorrectamente: 0. |
 | split_dates::provisional_monitoring | PASS | error | Filas asignadas incorrectamente: 0. |
+| prohibit_random_split | PASS | error | Los splits siguen exclusivamente ventanas temporales predefinidas; no se detecta partición aleatoria. |
 | provisional_monitoring_rows | PASS | error | Filas de seguimiento no marcadas como provisionales: 0. |
 | provisional_excluded_from_selection | PASS | error | Filas provisionales en validación o test: 0. |
+| historical_features_before_target | PASS | error | Todos los lags y ventanas móviles utilizan únicamente meses anteriores al mes objetivo. |
 | calendar_lag::lag_1_overnight_stays | PASS | error | Diferencias respecto al mes exacto: 0. |
 | calendar_lag::lag_3_overnight_stays | PASS | error | Diferencias respecto al mes exacto: 0. |
 | calendar_lag::lag_12_overnight_stays | PASS | error | Diferencias respecto al mes exacto: 0. |
