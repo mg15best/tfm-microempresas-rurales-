@@ -22,40 +22,24 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import yaml
+try:
+    from src.models.modeling_common import (
+        PROJECT_ROOT,
+        load_config,
+        resolve_project_path,
+    )
+except ModuleNotFoundError:
+    from modeling_common import (
+        PROJECT_ROOT,
+        load_config,
+        resolve_project_path,
+    )
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = PROJECT_ROOT / "data" / "metadata" / "modeling_config.yml"
 SUMMARY_PATH = PROJECT_ROOT / "data" / "metadata" / "baseline_metrics_summary.csv"
 BY_TERRITORY_PATH = PROJECT_ROOT / "data" / "metadata" / "baseline_metrics_by_territory.csv"
 BY_MONTH_PATH = PROJECT_ROOT / "data" / "metadata" / "baseline_metrics_by_month.csv"
 BY_SEASON_PATH = PROJECT_ROOT / "data" / "metadata" / "baseline_metrics_by_season.csv"
 REPORT_PATH = PROJECT_ROOT / "data" / "metadata" / "baseline_evaluation_report.md"
-
-
-def load_config() -> dict[str, Any]:
-    """Carga la configuración reproducible de modelado."""
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(
-            "No se encontró la configuración: "
-            f"{CONFIG_PATH.relative_to(PROJECT_ROOT)}"
-        )
-
-    with CONFIG_PATH.open("r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
-
-    if not isinstance(config, dict):
-        raise ValueError("modeling_config.yml no contiene un objeto YAML válido.")
-
-    return config
-
-
-def resolve_project_path(path_text: str) -> Path:
-    """Resuelve una ruta relativa respecto a la raíz del proyecto."""
-    path = Path(path_text)
-    return path if path.is_absolute() else PROJECT_ROOT / path
-
 
 def evaluation_split_names(config: dict[str, Any]) -> list[str]:
     """Devuelve las validaciones temporales y el test final."""
