@@ -682,6 +682,154 @@ def validate_forbidden_predictors(
         ),
     )
 
+
+def validate_point_in_time_availability(
+    rules: dict[str, Any],
+    modeling_config: dict[str, Any],
+    results: list[dict[str, str]],
+) -> None:
+    """Comprueba la disponibilidad operacional declarada para model_inputs."""
+    rule = rules["validation"]["point_in_time_availability"]
+    section_name = str(rule["config_section"])
+    availability = modeling_config.get(section_name)
+
+    if not isinstance(availability, dict):
+        add_result(
+            results,
+            "point_in_time_availability_configured",
+            False,
+            f"Falta la seccion {section_name} en modeling_config.yml.",
+        )
+        return
+
+    model_inputs = modeling_config["model_inputs"]
+    predictors = {
+        str(column)
+        for group in [
+            "numeric_features",
+            "categorical_features",
+            "boolean_features",
+        ]
+        for column in model_inputs.get(group, [])
+    }
+    known_in_advance = {
+        str(column)
+        for column in availability.get("known_in_advance_predictors", [])
+    }
+    eotr_lags = {
+        str(name): int(lag)
+        for name, lag in availability.get("eotr_predictor_lags", {}).items()
+    }
+    unavailable = {
+        str(column)
+        for column in availability.get("unavailable_at_forecast_origin", [])
+    }
+    classified = known_in_advance | set(eotr_lags) | unavailable
+
+    horizon_consistent = int(
+        availability["forecast_horizon_months"]
+    ) == int(modeling_config["problem"]["forecast_horizon_months"])
+    forecast_origin = str(availability.get("forecast_origin", ""))
+    canonical_forecast_origin = str(
+        availability.get("canonical_forecast_origin", "")
+    )
+    origin_supported = bool(canonical_forecast_origin) and (
+        forecast_origin == canonical_forecast_origin
+    )
+    add_result(
+        results,
+        "point_in_time_forecast_origin",
+        horizon_consistent and origin_supported,
+        (
+            "Forecast origin canonico y horizonte de disponibilidad "
+            "coherentes."
+            if horizon_consistent and origin_supported
+            else "Forecast origin no soportado o horizonte de disponibilidad "
+            "incoherente."
+        ),
+    )
+
+    unclassified = sorted(predictors.difference(classified))
+    add_result(
+        results,
+        "point_in_time_inputs_classified",
+        not unclassified,
+        (
+            "Todos los model_inputs tienen clasificacion de disponibilidad."
+            if not unclassified
+            else "Predictores sin clasificar: " + ", ".join(unclassified)
+        ),
+    )
+
+    conflicting = sorted(
+        (known_in_advance | set(eotr_lags)).intersection(unavailable)
+    )
+    add_result(
+        results,
+        "point_in_time_classifications_non_conflicting",
+        not conflicting,
+        (
+            "No existen clasificaciones de disponibilidad contradictorias."
+            if not conflicting
+            else "Predictores con clasificacion contradictoria: "
+            + ", ".join(conflicting)
+        ),
+    )
+
+    unavailable_used = sorted(predictors.intersection(unavailable))
+    add_result(
+        results,
+        "point_in_time_unavailable_inputs_absent",
+        not unavailable_used,
+        (
+            "Ningun predictor no disponible aparece en model_inputs."
+            if not unavailable_used
+            else "Predictores no disponibles utilizados: "
+            + ", ".join(unavailable_used)
+        ),
+    )
+
+    minimum_lag = int(availability["minimum_safe_eotr_lag_months"])
+    unsafe_eotr = sorted(
+        predictor
+        for predictor in predictors.intersection(eotr_lags)
+        if eotr_lags[predictor] < minimum_lag
+    )
+    add_result(
+        results,
+        "point_in_time_eotr_minimum_lag",
+        not unsafe_eotr,
+        (
+            "Todos los predictores EOTR operacionales cumplen el desfase "
+            f"minimo de {minimum_lag} meses."
+            if not unsafe_eotr
+            else "Predictores EOTR con desfase insuficiente: "
+            + ", ".join(unsafe_eotr)
+        ),
+    )
+
+    policy_declared = bool(
+        rule.get("distinguish_reference_month_from_publication", False)
+        and rule.get("source_month_before_target_is_not_sufficient", False)
+        and str(availability.get("statistical_source", "")).strip()
+        and str(availability.get("policy", "")).strip()
+    )
+    add_result(
+        results,
+        "point_in_time_policy_declared",
+        policy_declared,
+        (
+            "Politica declarada: el mes de referencia no demuestra por si "
+            "solo disponibilidad por publicacion. Los controles anteriores "
+            "comprueban la consistencia automatica de model_inputs contra "
+            "esa politica."
+            if policy_declared
+            else "Falta declarar la distincion entre mes de referencia y "
+            "disponibilidad por publicacion."
+        ),
+    )
+
+
 def validate_traceability(
     modeling: pd.DataFrame,
     rules: dict[str, Any],
@@ -849,6 +997,11 @@ def main() -> int:
     results: list[dict[str, str]] = []
 
     validate_forbidden_predictors(
+        rules,
+        modeling_config,
+        results,
+    )
+    validate_point_in_time_availability(
         rules,
         modeling_config,
         results,

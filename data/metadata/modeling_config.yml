@@ -85,23 +85,10 @@ model_inputs:
     - "year"
     - "is_summer"
     - "is_christmas_period"
-    - "covid_period"
-    - "lag_1_overnight_stays"
     - "lag_3_overnight_stays"
     - "lag_12_overnight_stays"
-    - "rolling_mean_3m_overnight_stays"
-    - "rolling_mean_12m_overnight_stays"
-    - "yoy_change_overnight_stays"
-    - "lag_1_occupancy_rate_pct"
     - "lag_12_occupancy_rate_pct"
-    - "lag_1_weekend_occupancy_rate_pct"
-    - "lag_1_average_stay"
     - "lag_12_average_stay"
-    - "lag_1_domestic_overnight_stays_share"
-    - "lag_1_foreign_overnight_stays_share"
-    - "lag_1_places_estimated"
-    - "lag_1_establishments_estimated"
-    - "lag_1_staff_employed"
 
   categorical_features:
     - "territory_id"
@@ -111,7 +98,6 @@ model_inputs:
   boolean_features:
     - "is_summer"
     - "is_christmas_period"
-    - "covid_period"
 
 optional_future_features:
   - "is_easter_period"
@@ -153,6 +139,46 @@ feature_engineering:
   allow_future_information: false
   missing_demand_as_zero: false
 
+point_in_time_availability:
+  forecast_horizon_months: 1
+  forecast_origin: "end_of_month_t_before_target_t_plus_1"
+  canonical_forecast_origin: "end_of_month_t_before_target_t_plus_1"
+  statistical_source: "INE EOTR"
+  policy: >-
+    Una observacion dependiente de publicacion EOTR solo se considera
+    disponible automaticamente con al menos tres meses de desfase respecto
+    al mes objetivo, salvo regla explicita que demuestre otra disponibilidad.
+  minimum_safe_eotr_lag_months: 3
+
+  known_in_advance_predictors:
+    - "year"
+    - "month"
+    - "quarter"
+    - "is_summer"
+    - "is_christmas_period"
+    - "territory_id"
+
+  eotr_predictor_lags:
+    lag_3_overnight_stays: 3
+    lag_12_overnight_stays: 12
+    lag_12_occupancy_rate_pct: 12
+    lag_12_average_stay: 12
+
+  unavailable_at_forecast_origin:
+    - "covid_period"
+    - "lag_1_overnight_stays"
+    - "rolling_mean_3m_overnight_stays"
+    - "rolling_mean_12m_overnight_stays"
+    - "yoy_change_overnight_stays"
+    - "lag_1_occupancy_rate_pct"
+    - "lag_1_weekend_occupancy_rate_pct"
+    - "lag_1_average_stay"
+    - "lag_1_domestic_overnight_stays_share"
+    - "lag_1_foreign_overnight_stays_share"
+    - "lag_1_places_estimated"
+    - "lag_1_establishments_estimated"
+    - "lag_1_staff_employed"
+
 validation:
   strategy: "expanding_window_backtesting"
   random_split: false
@@ -176,6 +202,10 @@ validation:
   final_test:
     start: "2024-06"
     end: "2025-05"
+    test_status: "already_opened"
+    reusable_for_model_selection: false
+    reusable_for_independent_confirmation: false
+    future_evaluation_requires_untouched_window: true
 
   provisional_monitoring:
     start: "2025-06"
@@ -227,9 +257,13 @@ model_selection:
       early_stopping: false
 
   minimum_mae_improvement_pct: 5.0
+  prefer_simpler_model_when_similar: true
+
+historical_pre_point_in_time_promotion_criteria:
+  minimum_mae_improvement_pct: 5.0
   require_final_test_improvement: true
   require_majority_territories_improved: true
-  prefer_simpler_model_when_similar: true
+  status: "historical_only"
 
 fallback:
   if_no_candidate_beats_baseline:

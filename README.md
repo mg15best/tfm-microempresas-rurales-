@@ -37,29 +37,38 @@ Actualmente están implementados:
 * contrato formal de las 64 columnas de la tabla gold;
 * validación automatizada de calidad;
 * análisis exploratorio en notebook;
-* dataset específico de modelado con lags calendario y ventanas históricas sin fuga;
+* dataset específico de modelado con lags calendario y ventanas históricas;
 * contrato y validación reproducible del dataset de modelado;
+* control point-in-time que separa mes de referencia y fecha de publicación;
 * baseline estacional `lag_12`;
 * regresión Ridge como candidato interpretable;
 * `HistGradientBoostingRegressor` como candidato flexible;
 * backtesting temporal con ventana expansiva;
-* evaluación final no provisional;
-* métricas globales, territoriales y mensuales;
-* predicciones reproducibles del candidato final.
+* selección operacional basada exclusivamente en las tres validaciones;
+* test histórico marcado como ya abierto y protegido frente a reutilización;
+* artefactos de test anteriores archivados como pre-point-in-time.
 
 Resultado resumido de la Entrega 4:
 
 | Indicador | Resultado |
 |---|---:|
 | Dataset de modelado | 12.691 filas y 37 columnas |
-| Validación del dataset | 62 PASS / 0 WARN / 0 FAIL |
-| MAE baseline en test | 3.045,00 |
-| MAE `hgb_raw_02` en test | 2.760,59 |
-| Mejora de MAE en test | 9,34 % |
-| Provincias mejoradas | 41 de 50 |
-| Mejora agregada en validación | -2,11 % |
+| Validación del dataset | 68 PASS / 0 WARN / 0 FAIL |
+| MAE baseline en validación agregada | 5.018,64 |
+| MAE mejor Ridge seguro en validación agregada | 5.175,99 |
+| MAE `hgb_raw_02` seguro en validación agregada | 7.349,42 |
+| Solución operacional seleccionada | Baseline `lag_12` |
 
-`hgb_raw_02` es el mejor candidato de machine learning y gana en el test final, pero no cumple la regla completa de promoción porque no mejora el baseline de forma agregada y estable en validación. El baseline estacional se mantiene como referencia robusta y mecanismo de fallback.
+Los resultados anteriores de HGB se conservan como trazabilidad de una
+evaluación retrospectiva basada en el mes de referencia, no como rendimiento
+operacional point-in-time. La corrección de Entrega 4 fija el forecast origin
+al cierre del mes anterior al objetivo y excluye de `model_inputs` las
+estadísticas EOTR que todavía no estarían publicadas. El baseline estacional
+`lag_12` se mantiene como referencia operacional metodológicamente válida.
+Como trazabilidad histórica, la especificación anterior de HGB obtuvo MAE
+2.760,59 frente a 3.045,00 del baseline en test, una mejora del 9,34 %. Esas
+cifras son retrospectivas y no se usan como evidencia operacional ni en la
+selección corregida.
 
 ## Fuentes utilizadas
 
@@ -86,11 +95,16 @@ El dataset específico de modelado se encuentra en:
 data/gold/gold_modeling_dataset_monthly.parquet
 ```
 
-Las predicciones reproducibles de validación y test del candidato final se encuentran en:
+Las predicciones vigentes para la selección point-in-time contienen solo las
+tres ventanas de validación y se encuentran en:
 
 ```text
-data/model_outputs/final_candidate_predictions.parquet
+data/model_outputs/model_selection_validation_predictions.parquet
 ```
+
+Los resultados de test de la especificación anterior se conservan únicamente
+como archivo histórico en
+`data/model_outputs/historical_pre_point_in_time_final_candidate_predictions.parquet`.
 
 También existe una exportación CSV de la tabla gold descriptiva:
 
@@ -167,13 +181,18 @@ src/
 │   ├── build_modeling_dataset.py
 │   └── validate_modeling_dataset.py
 ├── models/
+│   ├── modeling_common.py
 │   ├── evaluate_baseline.py
+│   ├── select_models.py
 │   └── evaluate_final_candidate.py
 └── visualization/
 
 tests/
 ├── test_build_gold.py
-└── test_build_modeling_dataset.py
+├── test_build_modeling_dataset.py
+├── test_modeling_common.py
+├── test_select_models.py
+└── test_evaluate_final_candidate.py
 
 requirements.txt
 README.md
@@ -307,26 +326,33 @@ Una ejecución correcta devuelve código `0` y actualiza:
 data/metadata/modeling_data_quality_report.md
 ```
 
-### 8. Evaluar el baseline estacional
+### 8. Seleccionar modelos mediante validación temporal
 
 ```powershell
-.\.venv\Scripts\python.exe src/models/evaluate_baseline.py
+.\.venv\Scripts\python.exe src/models/select_models.py
 ```
 
-### 9. Reproducir la evaluación del candidato final
+La selección utiliza exclusivamente `validation_1`, `validation_2` y
+`validation_3`, aplica el umbral mínimo de mejora del 5 % y mantiene el
+baseline `lag_12` como campeón actual. El test final no interviene en la
+elección.
 
-```powershell
-.\.venv\Scripts\python.exe src/models/evaluate_final_candidate.py
-```
+### 9. Estado de la evaluación final
 
-Esta ejecución reproduce los folds de validación y el test final con la configuración congelada `hgb_raw_02`, y genera:
+La ventana de test configurada tiene estado `already_opened`. Por ello
+`evaluate_final_candidate.py` permanece protegido y no forma parte del flujo
+de ejecución vigente. Solo podrá volver a utilizarse cuando se configure
+conscientemente una futura ventana temporal realmente no utilizada.
+
+Los artefactos anteriores no se regeneran y se conservan como trazabilidad
+histórica pre-point-in-time:
 
 ```text
-data/model_outputs/final_candidate_predictions.parquet
-data/metadata/final_candidate_evaluation_report.md
-data/metadata/final_candidate_metrics_by_split.csv
-data/metadata/final_candidate_test_by_territory.csv
-data/metadata/final_candidate_test_by_month.csv
+data/model_outputs/historical_pre_point_in_time_final_candidate_predictions.parquet
+data/metadata/historical_pre_point_in_time_final_candidate_evaluation_report.md
+data/metadata/historical_pre_point_in_time_final_candidate_metrics_by_split.csv
+data/metadata/historical_pre_point_in_time_final_candidate_test_by_territory.csv
+data/metadata/historical_pre_point_in_time_final_candidate_test_by_month.csv
 ```
 
 ### 10. Ejecutar las pruebas automatizadas
@@ -340,10 +366,12 @@ python -m pip install -r requirements-dev.txt
 Ejecutar la suite:
 
 ```powershell
-python -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
 ```
 
-La suite actual contiene 12 pruebas automatizadas y se ejecuta también mediante GitHub Actions en cada `push` y `pull_request` sobre `main`.
+La suite actual contiene 21 pruebas automatizadas, más 5 subtests de inputs
+no disponibles, y se ejecuta también mediante GitHub Actions en cada `push` y
+`pull_request` sobre `main`.
 
 ## Análisis exploratorio
 

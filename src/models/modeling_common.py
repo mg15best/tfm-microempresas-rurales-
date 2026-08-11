@@ -50,6 +50,91 @@ def resolve_project_path(path_text: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def validate_model_input_availability(
+    config: dict[str, Any],
+    predictors: list[str],
+) -> None:
+    """Valida disponibilidad operacional de predictores en el forecast origin."""
+    availability = config.get("point_in_time_availability")
+
+    if not isinstance(availability, dict):
+        raise ValueError(
+            "Falta la seccion point_in_time_availability en la configuracion."
+        )
+
+    configured_horizon = int(availability["forecast_horizon_months"])
+    problem_horizon = int(config["problem"]["forecast_horizon_months"])
+
+    if configured_horizon != problem_horizon:
+        raise ValueError(
+            "El horizonte de disponibilidad point-in-time no coincide con "
+            "el horizonte del problema."
+        )
+
+    forecast_origin = str(availability["forecast_origin"])
+    canonical_forecast_origin = str(
+        availability["canonical_forecast_origin"]
+    )
+
+    if forecast_origin != canonical_forecast_origin:
+        raise ValueError(
+            "El forecast origin configurado no coincide con el valor "
+            "canonico soportado para la Entrega 4: "
+            f"{canonical_forecast_origin}."
+        )
+
+    minimum_lag = int(availability["minimum_safe_eotr_lag_months"])
+    known_in_advance = {
+        str(value)
+        for value in availability.get("known_in_advance_predictors", [])
+    }
+    eotr_lags = {
+        str(name): int(lag)
+        for name, lag in availability.get("eotr_predictor_lags", {}).items()
+    }
+    unavailable = {
+        str(value)
+        for value in availability.get("unavailable_at_forecast_origin", [])
+    }
+    predictor_set = set(predictors)
+
+    conflicting = sorted(
+        (known_in_advance | set(eotr_lags)).intersection(unavailable)
+    )
+    if conflicting:
+        raise ValueError(
+            "Predictores clasificados simultaneamente como disponibles y "
+            "no disponibles: " + ", ".join(conflicting)
+        )
+
+    unavailable_used = sorted(predictor_set.intersection(unavailable))
+    if unavailable_used:
+        raise ValueError(
+            "model_inputs contiene predictores no disponibles en el "
+            "forecast origin: " + ", ".join(unavailable_used)
+        )
+
+    classified = known_in_advance | set(eotr_lags)
+    unclassified = sorted(predictor_set.difference(classified))
+    if unclassified:
+        raise ValueError(
+            "model_inputs contiene predictores sin clasificacion de "
+            "disponibilidad point-in-time: " + ", ".join(unclassified)
+        )
+
+    unsafe_eotr = sorted(
+        name
+        for name in predictor_set.intersection(eotr_lags)
+        if eotr_lags[name] < minimum_lag
+    )
+    if unsafe_eotr:
+        raise ValueError(
+            "model_inputs contiene predictores EOTR con un desfase inferior "
+            f"al minimo seguro de {minimum_lag} meses: "
+            + ", ".join(unsafe_eotr)
+        )
+
+
 def get_model_inputs(
     config: dict[str, Any],
 ) -> tuple[list[str], list[str], list[str], list[str]]:
@@ -80,6 +165,14 @@ def get_model_inputs(
         raise ValueError(
             "model_inputs contiene variables predictoras duplicadas."
         )
+
+    configured_predictors = list(
+        dict.fromkeys(feature_columns + boolean_features)
+    )
+    validate_model_input_availability(
+        config,
+        configured_predictors,
+    )
 
     return (
         numeric_features,

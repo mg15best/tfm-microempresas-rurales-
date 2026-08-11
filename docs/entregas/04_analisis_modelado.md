@@ -27,7 +27,8 @@ La entrega se inició definiendo de forma completa y trazable la estrategia de a
 - implementar el baseline estacional;
 - entrenar y comparar los modelos candidatos;
 - aplicar backtesting con ventanas temporales expansivas;
-- evaluar una única vez el test final no provisional;
+- conservar la trazabilidad de la evaluación histórica del test y bloquear
+  su reutilización tras la corrección point-in-time;
 - generar predicciones, métricas e informes reproducibles;
 - documentar los resultados, limitaciones y decisión final.
 
@@ -700,16 +701,61 @@ se podrá conservar una sola variable para evitar redundancia perfecta.
 
 ## 4.8. Disponibilidad real de la información
 
-Para predecir el mes `t+1`, solo podrá utilizarse:
+El *forecast origin* operacional se fija en el **cierre del mes `t`,
+inmediatamente antes del comienzo del mes objetivo `t+1`**. Por tanto, para
+predecir `t+1` solo podrá utilizarse:
 
 - calendario conocido del mes objetivo;
-- datos publicados hasta el mes `t`;
-- lags y medias móviles construidos hasta `t`;
+- datos cuya publicación se haya producido como máximo en el forecast origin;
+- lags y variables derivadas cuyos componentes ya estuvieran publicados;
 - variables externas cuya fecha de publicación permita demostrar que estaban disponibles.
 
-No se asumirá que una estadística oficial se publica inmediatamente al terminar el mes. En una implementación operativa futura deberá registrarse también la fecha real de publicación.
+El mes de referencia de una estadística y su fecha real de publicación son
+conceptos diferentes. Que `source_month < target_month` no demuestra que el
+valor estuviera publicado antes del forecast origin.
 
-Para esta prueba de concepto se trabajará con la regla conservadora de no usar información del mes objetivo.
+Las notas oficiales del INE muestran que la EOTR se difunde normalmente unos
+30-32 días después de terminar el mes de referencia. Algunos ejemplos son:
+
+| Mes de referencia | Fecha de publicación INE |
+|---|---|
+| Diciembre de 2023 | 1 de febrero de 2024 |
+| Enero de 2024 | 1 de marzo de 2024 |
+| Abril de 2024 | 31 de mayo de 2024 |
+| Mayo de 2024 | 2 de julio de 2024 |
+| Junio de 2024 | 1 de agosto de 2024 |
+| Agosto de 2024 | 1 de octubre de 2024 |
+
+Fuentes oficiales: [EOAT1223](https://www.ine.es/dyngs/Prensa/EOAT1223.htm),
+[EOAT0124](https://www.ine.es/dyngs/Prensa/EOAT0124.htm),
+[EOAT0424](https://www.ine.es/dyngs/Prensa/EOAT0424.htm),
+[EOAT0524](https://www.ine.es/dyngs/Prensa/EOAT0524.htm),
+[EOAT0624](https://www.ine.es/dyngs/Prensa/EOAT0624.htm) y
+[EOAT0824](https://www.ine.es/dyngs/Prensa/EOAT0824.htm).
+
+En consecuencia, los `lag_1_*` relativos al mes objetivo usan observaciones
+de `t` que todavía no están publicadas al cerrar ese mes. También quedan fuera
+las medias móviles actuales y `yoy_change_overnight_stays`, porque dependen
+indirectamente de `lag_1_overnight_stays`.
+
+La política conservadora de esta entrega considera automáticamente disponible
+un predictor EOTR cuando presenta al menos tres meses de desfase respecto al
+mes objetivo, salvo que exista una regla explícita que demuestre otra
+disponibilidad. `lag_3_overnight_stays` cumple ese margen y los `lag_12_*`
+seleccionados continúan siendo válidos. Los inputs operacionales quedan
+limitados a calendario, territorio, `lag_3_overnight_stays`,
+`lag_12_overnight_stays`, `lag_12_occupancy_rate_pct` y
+`lag_12_average_stay`.
+
+Las columnas excluidas de `model_inputs` permanecen en el dataset de modelado
+para mantener trazabilidad y permitir análisis no operacionales; no se usan en
+Ridge ni en HistGradientBoosting.
+
+Las revisiones de datos provisionales son una limitación distinta. Esta
+entrega utiliza la versión histórica disponible en la Gold aprobada y no
+reconstruye vintages point-in-time. Por ello, incluso las métricas con
+predictores disponibles deben interpretarse como backtesting sobre la vintage
+actual, no como reconstrucción exacta de cada publicación provisional.
 
 ---
 
@@ -935,18 +981,21 @@ Los modelos se compararán mediante:
 
 ## 6.6. Regla de selección final
 
-Un modelo candidato será seleccionado si cumple todas estas condiciones:
+En la especificación point-in-time corregida, un modelo candidato sustituirá
+al baseline solo si cumple estas condiciones sobre
+`validation_1`, `validation_2` y `validation_3`:
 
-1. Mejora el MAE del baseline en el conjunto de validación agregado.
-2. Mantiene la mejora en el test final.
-3. Obtiene una mejora práctica aproximada de al menos un 5 % en MAE, salvo que una mejora menor se justifique por una estabilidad o utilidad claramente superior.
-4. Supera el baseline en una mayoría clara de provincias.
-5. No empeora de forma grave en territorios o temporadas relevantes.
-6. Presenta resultados estables entre folds.
-7. No utiliza variables con fuga de información.
-8. Puede reproducirse con el pipeline y las dependencias del repositorio.
-9. Su complejidad se justifica por la mejora obtenida.
-10. Puede explicarse e integrarse en el MVP.
+1. Obtiene una mejora agregada mínima del 5 % en MAE frente al baseline.
+2. Presenta resultados estables entre folds.
+3. No utiliza variables con fuga de información ni no disponibles en el
+   forecast origin.
+4. Puede reproducirse con el pipeline y las dependencias del repositorio.
+5. Su complejidad se justifica por la mejora obtenida.
+6. Puede explicarse e integrarse en el MVP.
+
+La ventana de test ya abierta no interviene en esta regla ni puede confirmar
+de forma independiente una nueva especificación. Esa confirmación requerirá
+una futura ventana temporal realmente no utilizada.
 
 Si dos modelos tienen un rendimiento similar, se seleccionará el más simple, estable e interpretable.
 
@@ -1125,14 +1174,14 @@ predicción_final = max(0, predicción)
 
 El modelo se considerará aceptable si:
 
-- mejora el baseline estacional en MAE;
-- mantiene la mejora en el test final;
-- alcanza una mejora práctica aproximada del 5 % o superior;
-- mejora en una mayoría clara de provincias;
+- mejora el baseline estacional al menos un 5 % en MAE agregado de validación;
 - no presenta leakage;
 - mantiene estabilidad entre folds;
 - produce salidas coherentes y no negativas;
 - puede integrarse y explicarse.
+
+El test histórico no forma parte de esta aceptación corregida. Una evaluación
+final independiente queda aplazada hasta disponer de una ventana no abierta.
 
 Si ningún modelo cumple estas condiciones:
 
@@ -1273,13 +1322,19 @@ Durante esta fase se han desarrollado, de forma reproducible, los siguientes com
 ```text
 src/features/build_modeling_dataset.py
 src/features/validate_modeling_dataset.py
+src/models/modeling_common.py
 src/models/evaluate_baseline.py
+src/models/select_models.py
 src/models/evaluate_final_candidate.py
 data/gold/gold_modeling_dataset_monthly.parquet
-data/model_outputs/final_candidate_predictions.parquet
+data/model_outputs/model_selection_validation_predictions.parquet
 ```
 
-También se han creado el contrato del dataset de modelado, las reglas de validación, la configuración temporal de folds, pruebas automatizadas de lags y medias móviles, métricas desagregadas e informes de selección y evaluación final.
+`evaluate_final_candidate.py` se conserva para trazabilidad y una futura
+ventana no utilizada, pero la política `already_opened` bloquea su ejecución
+sobre el test actual.
+
+También se han creado el contrato del dataset de modelado, las reglas de validación, la configuración temporal de folds, pruebas automatizadas de lags y medias móviles, métricas desagregadas e informes de selección.
 
 La Entrega 4 queda así alineada con el alcance actual del TFM: se ha construido un núcleo predictivo riguroso, comparable con una referencia sencilla y preparado para evolucionar hacia un futuro sistema de apoyo a la planificación turística rural.
 
@@ -1313,9 +1368,13 @@ tests/test_build_modeling_dataset.py
 
 ```text
 src/models/evaluate_baseline.py
+src/models/select_models.py
 src/models/evaluate_final_candidate.py
-data/model_outputs/final_candidate_predictions.parquet
+data/model_outputs/model_selection_validation_predictions.parquet
 ```
+
+El último script está protegido mientras el test actual permanezca marcado
+como `already_opened`; no es un paso ejecutable de la especificación vigente.
 
 ### Informes y métricas
 
@@ -1326,9 +1385,17 @@ data/metadata/baseline_metrics_by_territory.csv
 data/metadata/baseline_metrics_by_month.csv
 data/metadata/baseline_metrics_by_season.csv
 data/metadata/model_selection_validation_report.md
-data/metadata/final_candidate_metrics_by_split.csv
-data/metadata/final_candidate_test_by_territory.csv
-data/metadata/final_candidate_test_by_month.csv
+```
+
+Los siguientes artefactos contienen exclusivamente la evaluación histórica
+pre-point-in-time y no son outputs vigentes:
+
+```text
+data/model_outputs/historical_pre_point_in_time_final_candidate_predictions.parquet
+data/metadata/historical_pre_point_in_time_final_candidate_evaluation_report.md
+data/metadata/historical_pre_point_in_time_final_candidate_metrics_by_split.csv
+data/metadata/historical_pre_point_in_time_final_candidate_test_by_territory.csv
+data/metadata/historical_pre_point_in_time_final_candidate_test_by_month.csv
 ```
 
 ## 10.2. Dataset de modelado construido
@@ -1367,10 +1434,16 @@ La clasificación de calidad de las filas es:
 La validación reproducible del dataset terminó con:
 
 ```text
-62 PASS / 0 WARN / 0 FAIL
+68 PASS / 0 WARN / 0 FAIL
 ```
 
-La suite automatizada contiene 12 pruebas que cubren la construcción temporal del dataset y utilidades compartidas de modelado. Entre otros controles, verifica que los lags buscan el mes calendario exacto, que los huecos no se sustituyen por cero, que las medias móviles excluyen el mes objetivo y requieren ventanas completas, y que la configuración de inputs, folds, filas comparables y métricas de modelado mantiene el comportamiento esperado.
+La suite automatizada contiene 21 pruebas, más 5 subtests de inputs no
+disponibles. Entre otros controles, verifica que los lags buscan el mes
+calendario exacto, que los huecos no se sustituyen por cero, que las medias
+móviles excluyen el mes objetivo y requieren ventanas completas, y que la
+configuración de inputs, disponibilidad point-in-time, protección del test,
+umbral de selección, folds, filas comparables y métricas mantiene el
+comportamiento esperado.
 
 Las dependencias de desarrollo se declaran en `requirements-dev.txt` y la suite se ejecuta también automáticamente mediante GitHub Actions en cada `push` y `pull_request` sobre `main`.
 
@@ -1427,20 +1500,32 @@ Ridge se implementó mediante un pipeline con:
 La mejor configuración fue:
 
 ```text
-alpha = 100
+alpha = 0.01
 ```
 
 Resultado agregado sobre las tres validaciones:
 
 | Modelo | Filas | MAE | MAE baseline | Mejora |
 |---|---:|---:|---:|---:|
-| Ridge | 1.750 | 5.450,77 | 5.018,64 | -8,61 % |
+| Ridge | 1.750 | 5.175,99 | 5.018,64 | -3,14 % |
 
-Ridge solo mejoró el baseline en `validation_2`, con una mejora del 3,71 %, y no alcanzó el umbral práctico definido. Por ello quedó descartado como candidato principal y no se utilizó el test para reajustarlo.
+Resultado por fold con los inputs operacionales point-in-time:
+
+| Split | MAE Ridge | MAE baseline | Mejora |
+|---|---:|---:|---:|
+| Validation 1 | 9.309,50 | 9.116,56 | -2,12 % |
+| Validation 2 | 3.180,78 | 3.071,71 | -3,55 % |
+| Validation 3 | 3.382,14 | 3.209,14 | -5,39 % |
+
+Ridge no mejora el baseline en ninguna validación ni en el agregado. Por ello
+queda descartado como candidato principal sin utilizar el test para
+reajustarlo.
 
 ## 10.6. Selección de HistGradientBoosting
 
-Se probaron configuraciones limitadas de `HistGradientBoostingRegressor` con target original y transformación `log1p`, utilizando únicamente las tres validaciones.
+La configuración congelada `hgb_raw_02` se reevaluó con los inputs
+operacionales corregidos, utilizando únicamente las tres validaciones. No se
+crearon nuevas configuraciones ni se cambiaron hiperparámetros.
 
 La configuración seleccionada fue:
 
@@ -1460,28 +1545,33 @@ Resultado agregado de validación:
 
 | Modelo | Filas | MAE | MAE baseline | Mejora |
 |---|---:|---:|---:|---:|
-| `hgb_raw_02` | 1.750 | 5.124,56 | 5.018,64 | -2,11 % |
+| `hgb_raw_02` | 1.750 | 7.349,42 | 5.018,64 | -46,44 % |
 
 Resultado por fold:
 
 | Split | MAE HGB | MAE baseline | Mejora |
 |---|---:|---:|---:|
-| Validation 1 | 8.081,94 | 9.116,56 | 11,35 % |
-| Validation 2 | 4.133,83 | 3.071,71 | -34,58 % |
-| Validation 3 | 3.404,34 | 3.209,14 | -6,08 % |
+| Validation 1 | 10.676,95 | 9.116,56 | -17,12 % |
+| Validation 2 | 7.927,89 | 3.071,71 | -158,09 % |
+| Validation 3 | 3.720,71 | 3.209,14 | -15,94 % |
 
-El candidato mejora durante la recuperación posterior a COVID-19, pero empeora en las dos validaciones más recientes. Por tanto, no cumple el criterio de mejora agregada y estabilidad temporal.
+El candidato empeora el baseline en las tres validaciones con la especificación
+operacional corregida. Por tanto, no cumple el criterio de mejora agregada ni
+de estabilidad temporal.
 
-## 10.7. Evaluación única del test final
+## 10.7. Evaluación histórica del test bajo la especificación anterior
 
-Tras congelar la configuración seleccionada, el modelo se entrenó con 10.737 filas evaluables hasta mayo de 2024 y se evaluó una sola vez en el periodo junio de 2024 a mayo de 2025.
+Antes de corregir la disponibilidad point-in-time, el modelo se entrenó con
+10.737 filas evaluables hasta mayo de 2024 y se evaluó una sola vez en el
+periodo junio de 2024 a mayo de 2025. Esa especificación incluía predictores
+EOTR del mes anterior que todavía no estaban publicados en el forecast origin.
 
 | Modelo | Filas | MAE | RMSE | WAPE | Sesgo medio |
 |---|---:|---:|---:|---:|---:|
 | Baseline lag-12 | 600 | 3.045,00 | 5.236,82 | 14,35 % | -49,18 |
 | `hgb_raw_02` | 600 | 2.760,59 | 4.550,60 | 13,01 % | 378,82 |
 
-En el test final, HistGradientBoosting:
+En aquella evaluación retrospectiva, HistGradientBoosting:
 
 - mejora el MAE un 9,34 %;
 - reduce el RMSE aproximadamente un 13,10 %;
@@ -1492,26 +1582,45 @@ En el test final, HistGradientBoosting:
 
 Las mayores mejoras mensuales se observan en marzo y abril. Los principales deterioros aparecen en agosto, septiembre y diciembre.
 
-## 10.8. Decisión final
+Estas cifras se conservan para trazabilidad histórica. Representan una
+evaluación bajo disponibilidad por mes de referencia, no rendimiento
+operacional point-in-time. En particular, la mejora del 9,34 % no constituye
+evidencia de un modelo operacional definitivo y no interviene en la selección
+corregida.
 
-Los criterios definidos antes de abrir el test producen el siguiente resultado:
+Los cinco ficheros asociados se archivan con el prefijo
+`historical_pre_point_in_time_`. No deben regenerarse: el test tiene estado
+`already_opened` y `evaluate_final_candidate.py` detiene cualquier ejecución
+normal antes de cargar o filtrar datos de esa ventana.
+
+## 10.8. Decisión final tras la corrección point-in-time
+
+La nueva selección se realiza exclusivamente sobre `validation_1`,
+`validation_2` y `validation_3`. El test ya abierto no se reutiliza para elegir
+variables, modelo, hiperparámetros, reglas de disponibilidad ni criterios de
+promoción.
 
 | Criterio | Resultado |
 |---|---|
-| Mejora agregada en validación igual o superior al 5 % | FAIL |
-| Mejora en test igual o superior al 5 % | PASS |
-| Mejora en la mayoría de provincias | PASS |
-| Promoción completa como único modelo operativo | FAIL |
+| Inputs compatibles con el forecast origin | PASS |
+| Ridge mejora el baseline en validación agregada | FAIL |
+| HGB mejora el baseline en validación agregada | FAIL |
+| Test utilizado en la nueva decisión | NO |
+| Solución operacional seleccionada | `seasonal_naive_lag_12` |
 
 La decisión final es:
 
-1. Mantener el baseline estacional lag-12 como referencia robusta y mecanismo de fallback.
-2. Conservar `hgb_raw_02` como mejor candidato de machine learning y modelo ganador en el test final.
-3. Mostrar ambos resultados de forma transparente.
-4. No realizar nuevos ajustes basados en el test final.
-5. Definir cualquier mejora posterior como un nuevo experimento temporal independiente.
+1. Mantener el baseline estacional lag-12 como solución operacional y
+   referencia robusta.
+2. No promover Ridge ni `hgb_raw_02`, porque ninguno mejora el baseline en
+   validación con los predictores realmente disponibles.
+3. Conservar las métricas anteriores de HGB solo como trazabilidad
+   retrospectiva.
+4. No realizar ajustes basados en el test final ya abierto.
 
-Esta decisión evita seleccionar el modelo únicamente por un resultado favorable en test y preserva la metodología definida antes de conocer dicho resultado.
+Esta decisión se apoya únicamente en disponibilidad externa y validación
+temporal. No intenta recuperar el resultado favorable observado previamente en
+test.
 
 Por coherencia con esta decisión, no se serializa ni publica `hgb_raw_02`
 como artefacto de producción. El candidato permanece reproducible mediante

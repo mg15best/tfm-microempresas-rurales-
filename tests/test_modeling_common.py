@@ -1,5 +1,7 @@
 ﻿import unittest
 
+from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 
@@ -9,6 +11,7 @@ from src.models.modeling_common import (
     common_evaluable_mask,
     get_model_inputs,
     get_validation_folds,
+    load_config,
 )
 
 
@@ -17,6 +20,9 @@ class TestModelingCommon(unittest.TestCase):
 
     def test_get_model_inputs_returns_configured_features(self) -> None:
         config = {
+            "problem": {
+                "forecast_horizon_months": 1,
+            },
             "model_inputs": {
                 "numeric_features": [
                     "year",
@@ -28,7 +34,22 @@ class TestModelingCommon(unittest.TestCase):
                 "boolean_features": [
                     "is_summer",
                 ],
-            }
+            },
+            "point_in_time_availability": {
+                "forecast_horizon_months": 1,
+                "forecast_origin": "end_of_month_t_before_target_t_plus_1",
+                "canonical_forecast_origin": (
+                    "end_of_month_t_before_target_t_plus_1"
+                ),
+                "minimum_safe_eotr_lag_months": 3,
+                "known_in_advance_predictors": [
+                    "year",
+                    "is_summer",
+                    "territory_id",
+                ],
+                "eotr_predictor_lags": {},
+                "unavailable_at_forecast_origin": [],
+            },
         }
 
         (
@@ -73,6 +94,87 @@ class TestModelingCommon(unittest.TestCase):
         }
 
         with self.assertRaises(ValueError):
+            get_model_inputs(config)
+
+    def test_current_operational_inputs_are_point_in_time_safe(self) -> None:
+        config = load_config()
+
+        _, _, _, feature_columns = get_model_inputs(config)
+
+        self.assertEqual(
+            feature_columns,
+            [
+                "year",
+                "is_summer",
+                "is_christmas_period",
+                "lag_3_overnight_stays",
+                "lag_12_overnight_stays",
+                "lag_12_occupancy_rate_pct",
+                "lag_12_average_stay",
+                "territory_id",
+                "month",
+                "quarter",
+            ],
+        )
+
+    def test_incorrect_forecast_origin_is_rejected(self) -> None:
+        config = deepcopy(load_config())
+        config["point_in_time_availability"][
+            "forecast_origin"
+        ] = "anything_nonempty"
+
+        with self.assertRaisesRegex(ValueError, "forecast origin"):
+            get_model_inputs(config)
+
+    def test_unclassified_operational_input_is_rejected(self) -> None:
+        config = deepcopy(load_config())
+        config["model_inputs"]["numeric_features"].append(
+            "unclassified_eotr_predictor"
+        )
+
+        with self.assertRaisesRegex(ValueError, "sin clasificacion"):
+            get_model_inputs(config)
+
+    def test_conflicting_availability_classification_is_rejected(self) -> None:
+        config = deepcopy(load_config())
+        config["point_in_time_availability"][
+            "known_in_advance_predictors"
+        ].append("lag_1_overnight_stays")
+
+        with self.assertRaisesRegex(ValueError, "simultaneamente"):
+            get_model_inputs(config)
+
+    def test_unavailable_inputs_are_rejected(self) -> None:
+        unavailable_predictors = [
+            "lag_1_overnight_stays",
+            "lag_1_occupancy_rate_pct",
+            "rolling_mean_3m_overnight_stays",
+            "rolling_mean_12m_overnight_stays",
+            "yoy_change_overnight_stays",
+        ]
+
+        for predictor in unavailable_predictors:
+            with self.subTest(predictor=predictor):
+                config = deepcopy(load_config())
+                config["model_inputs"]["numeric_features"].append(
+                    predictor
+                )
+
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "no disponibles",
+                ):
+                    get_model_inputs(config)
+
+    def test_eotr_predictor_below_minimum_lag_is_rejected(self) -> None:
+        config = deepcopy(load_config())
+        predictor = "example_eotr_lag_2"
+        config["model_inputs"]["numeric_features"].append(predictor)
+        config["point_in_time_availability"][
+            "eotr_predictor_lags"
+        ][predictor] = 2
+
+        with self.assertRaisesRegex(ValueError, "minimo seguro de 3 meses"):
             get_model_inputs(config)
 
     def test_get_validation_folds_adds_final_test(self) -> None:

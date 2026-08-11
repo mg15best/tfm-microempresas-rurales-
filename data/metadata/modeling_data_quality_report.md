@@ -1,12 +1,12 @@
 # Informe de calidad del dataset de modelado
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
-- **Generado en UTC:** `2026-08-10T10:36:35.169984+00:00`
+- **Generado en UTC:** `2026-08-11T11:56:08.670093+00:00`
 - **Filas:** 12,691
 - **Columnas:** 37
 - **Territorios:** 50
 - **Periodo:** 2005-01 → 2026-05
-- **Resultado:** 62 PASS / 0 WARN / 0 FAIL
+- **Resultado:** 68 PASS / 0 WARN / 0 FAIL
 
 ## Distribución temporal
 
@@ -33,6 +33,12 @@
 | Control | Estado | Severidad | Detalle |
 | --- | --- | --- | --- |
 | forbidden_predictors_absent | PASS | error | Ningún predictor configurado pertenece a la lista prohibida. |
+| point_in_time_forecast_origin | PASS | error | Forecast origin canonico y horizonte de disponibilidad coherentes. |
+| point_in_time_inputs_classified | PASS | error | Todos los model_inputs tienen clasificacion de disponibilidad. |
+| point_in_time_classifications_non_conflicting | PASS | error | No existen clasificaciones de disponibilidad contradictorias. |
+| point_in_time_unavailable_inputs_absent | PASS | error | Ningun predictor no disponible aparece en model_inputs. |
+| point_in_time_eotr_minimum_lag | PASS | error | Todos los predictores EOTR operacionales cumplen el desfase minimo de 3 meses. |
+| point_in_time_policy_declared | PASS | error | Politica declarada: el mes de referencia no demuestra por si solo disponibilidad por publicacion. Los controles anteriores comprueban la consistencia automatica de model_inputs contra esa politica. |
 | required_columns | PASS | error | Todas las columnas obligatorias están presentes. |
 | modeling_key_not_null | PASS | error | Filas con clave nula: 0. |
 | unique_modeling_key | PASS | error | Claves duplicadas: 0. |

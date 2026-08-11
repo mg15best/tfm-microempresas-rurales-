@@ -1,10 +1,10 @@
 """
-Evalúa de forma reproducible el candidato final HistGradientBoosting
-frente al baseline estacional lag-12.
+Conserva el flujo de evaluación final para trazabilidad y una futura ventana
+temporal realmente no utilizada.
 
-La configuración hgb_raw_02 fue seleccionada únicamente mediante las
-tres ventanas de validación temporal. El test final se evalúa una sola vez
-y no se utiliza para modificar variables, transformaciones o hiperparámetros.
+La ventana de test actual ya fue abierta bajo la especificación anterior a la
+corrección point-in-time. Mientras la configuración mantenga ese estado, la
+ejecución se bloquea antes de cargar datos o evaluar el test.
 
 Entradas
 --------
@@ -127,6 +127,25 @@ MODEL_PARAMETERS: dict[str, Any] = {
     **dict(HGB_CONFIG["parameters"]),
     "random_state": RANDOM_STATE,
 }
+
+
+def ensure_final_test_is_untouched(config: dict[str, Any]) -> None:
+    """Impide reutilizar como independiente una ventana de test ya abierta."""
+    final_test = config["validation"]["final_test"]
+    test_status = str(final_test.get("test_status", ""))
+
+    if test_status == "already_opened":
+        raise RuntimeError(
+            "Final test window is already opened and cannot be reused as "
+            "an independent evaluation for the point-in-time specification. "
+            "Use a future untouched evaluation window."
+        )
+
+    if test_status != "untouched":
+        raise RuntimeError(
+            "Final test evaluation requires an explicit untouched window "
+            "in modeling_config.yml."
+        )
 
 
 def load_dataset() -> pd.DataFrame:
@@ -862,6 +881,7 @@ sin reutilizar este test para seleccionar hiperparámetros.
 
 def main() -> int:
     """Ejecuta validaciones, test y generación de artefactos."""
+    ensure_final_test_is_untouched(CONFIG)
     dataframe = load_dataset()
 
     common_evaluable = (

@@ -160,6 +160,33 @@ def alpha_model_id(alpha: float) -> str:
     return f"ridge_alpha_{text}"
 
 
+def select_solution_by_validation(
+    config: dict[str, Any],
+    candidate_model: str,
+    baseline_mae: float,
+    candidate_mae: float,
+) -> tuple[str, float]:
+    """Aplica el umbral configurado usando solo resultados de validacion."""
+    improvement = calculate_improvement_pct(
+        baseline_mae,
+        candidate_mae,
+    )
+    minimum_improvement = float(
+        config["model_selection"]["minimum_mae_improvement_pct"]
+    )
+    fallback = str(
+        config["fallback"]["if_no_candidate_beats_baseline"][
+            "selected_solution"
+        ]
+    )
+    selected = (
+        candidate_model
+        if improvement >= minimum_improvement
+        else fallback
+    )
+    return selected, improvement
+
+
 def evaluate_model_fold(
     dataframe: pd.DataFrame,
     evaluable: pd.Series,
@@ -424,22 +451,30 @@ def write_report(
         key=lambda row: float(row["MAE"]),
     )
 
-    best_candidate_improvement = calculate_improvement_pct(
-        baseline_mae,
-        float(best_candidate["MAE"]),
+    selected_solution, best_candidate_improvement = (
+        select_solution_by_validation(
+            config,
+            str(best_candidate["model"]),
+            baseline_mae,
+            float(best_candidate["MAE"]),
+        )
     )
 
-    selected_solution = (
-        str(best_candidate["model"])
-        if best_candidate_improvement > 0
-        else str(config["fallback"][
-            "if_no_candidate_beats_baseline"
-        ]["selected_solution"])
+    minimum_improvement = float(
+        config["model_selection"]["minimum_mae_improvement_pct"]
     )
 
     generated_at = datetime.now(
         timezone.utc
     ).isoformat()
+    _, _, _, feature_columns = get_model_inputs(config)
+    availability = config["point_in_time_availability"]
+    test_status = str(
+        config["validation"]["final_test"]["test_status"]
+    )
+    operational_inputs = ", ".join(
+        f"`{feature}`" for feature in feature_columns
+    )
 
     report = f"""# Selección reproducible de modelos mediante validación temporal
 
@@ -448,8 +483,12 @@ def write_report(
 - **Estrategia:** validación temporal expansiva
 - **Splits de selección:** validation_1, validation_2 y validation_3
 - **Test final utilizado en selección:** no
+- **Estado de la ventana de test:** `{test_status}`
 - **Filas comparables agregadas:** {int(baseline_result["rows"])}
 - **Predicciones negativas:** recortadas a cero
+- **Forecast origin:** `{availability["forecast_origin"]}`
+- **Desfase EOTR mínimo seguro:** {int(availability["minimum_safe_eotr_lag_months"])} meses
+- **Predictores operacionales:** {operational_inputs}
 
 ## Alcance reproducido
 
@@ -495,6 +534,7 @@ Configuración evaluada: `hgb_raw_02`.
 
 - Mejor candidato de machine learning: `{best_candidate["model"]}`
 - Mejora agregada del mejor candidato: {format_number(best_candidate_improvement)} %
+- Umbral mínimo configurado: {format_number(minimum_improvement)} %
 - Solución seleccionada tras validación: `{selected_solution}`
 
 El conjunto de test permanece excluido de este proceso.

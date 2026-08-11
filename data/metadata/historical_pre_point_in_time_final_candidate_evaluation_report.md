@@ -1,4 +1,14 @@
-# Evaluación final del candidato HistGradientBoosting
+# ADVERTENCIA: evaluación histórica pre-point-in-time
+
+Este artefacto corresponde a la especificación anterior a la corrección de
+disponibilidad point-in-time. Utilizó predictores cuyo mes de referencia era
+anterior al target, pero cuya publicación real todavía no estaba disponible en
+el forecast origin. Las cifras de mejora del **9,34 %**, **41/50 provincias** y
+**7/12 meses** son resultados retrospectivos históricos: **no representan
+rendimiento operacional vigente**. El test ya abierto no debe reutilizarse
+para seleccionar ni confirmar la especificación point-in-time corregida.
+
+# Evaluación final histórica del candidato HistGradientBoosting
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
 - **Candidato:** `hgb_raw_02`
