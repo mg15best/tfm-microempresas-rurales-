@@ -109,15 +109,19 @@ forecast_horizon = 1
 
 Esto significa que, utilizando información disponible hasta el mes `t`, se predecirán las pernoctaciones del mes `t+1`.
 
-El proyecto se considerará útil si consigue:
+El MVP se considerará útil si consigue:
 
 - producir previsiones reproducibles para las provincias con histórico suficiente;
 - evitar el uso de información futura;
-- superar de forma estable un baseline estacional razonable;
 - mantener un error interpretable en número de pernoctaciones;
 - mostrar incertidumbre y limitaciones;
 - permitir analizar el rendimiento por provincia, mes y temporada;
 - integrarse posteriormente en un dashboard o aplicación ligera.
+
+Superar de forma estable un baseline estacional razonable será una condición
+para promocionar un candidato de ML. Si ningún candidato alcanza el umbral de
+mejora definido, conservar `seasonal_naive_lag_12` como solución operacional y
+fallback seguirá siendo un resultado útil y válido del MVP.
 
 No se considerará útil un modelo que obtenga una buena métrica global únicamente porque predice bien las provincias de mayor volumen, pero empeora de forma sistemática en la mayoría de territorios.
 
@@ -631,12 +635,16 @@ Estos campos se conservarán para trazabilidad, pero no se utilizarán como pred
 
 ## 4.6. Transformaciones y creación de features
 
-Las variables temporales se construirán por provincia, ordenando previamente por fecha.
+La implementación final construye las variables temporales por provincia,
+ordenando previamente por fecha y preservando el calendario mensual.
 
 Reglas principales:
 
-1. Los lags se calcularán con `shift`.
-2. Las medias móviles se calcularán después de aplicar el desplazamiento.
+1. Los lags se obtendrán mediante uniones por mes natural/calendario al mes
+   histórico correspondiente, para preservar offsets exactos incluso ante
+   huecos.
+2. Las medias móviles usarán únicamente observaciones anteriores
+   calendarizadas.
 3. Ninguna media móvil incluirá el valor del mes objetivo.
 4. Las variaciones históricas se calcularán únicamente con valores anteriores.
 5. Las transformaciones se realizarán dentro de una función reproducible.
@@ -645,8 +653,8 @@ Reglas principales:
 Ejemplo conceptual:
 
 ```text
-lag_1 = overnight_stays_total.shift(1)
-rolling_mean_3m = overnight_stays_total.shift(1).rolling(3).mean()
+lag_1 = valor_del_mes(t-1) unido por mes natural
+rolling_mean_3m = media(valor_del_mes(t-1), valor_del_mes(t-2), valor_del_mes(t-3))
 ```
 
 También se evaluará una transformación:
@@ -947,10 +955,14 @@ Se integrará en un pipeline con:
 
 Se integrará en un pipeline con:
 
-- imputación;
+- variables numéricas mediante `passthrough`;
 - codificación territorial compatible;
 - ajuste limitado de profundidad, tasa de aprendizaje y número de iteraciones;
 - control de sobreajuste.
+
+`HistGradientBoostingRegressor` gestiona de forma nativa los valores ausentes
+en las variables numéricas; no utiliza la imputación por mediana ni los
+indicadores de ausencia aplicados a Ridge.
 
 La búsqueda de hiperparámetros será pequeña y coherente con el volumen de datos. No se realizará una exploración masiva.
 
@@ -960,8 +972,10 @@ La búsqueda de hiperparámetros será pequeña y coherente con el volumen de da
 
 - No se imputará la variable objetivo.
 - Los lags ausentes por falta de histórico se marcarán.
-- La imputación de features se ajustará exclusivamente con train.
-- Se priorizarán medianas u otros métodos simples y reproducibles.
+- En Ridge, la imputación de features se ajustará exclusivamente con train y
+  se priorizarán medianas u otros métodos simples y reproducibles.
+- En HGB, las variables numéricas se mantienen mediante `passthrough` y los
+  valores ausentes se gestionan de forma nativa.
 - Podrán añadirse indicadores de ausencia cuando aporten valor.
 
 ### Escalado
@@ -1097,7 +1111,8 @@ En cada fold:
 Se aplicarán las siguientes reglas:
 
 - no usar variables contemporáneas del objetivo;
-- usar `shift` antes de cualquier media móvil;
+- construir lags y medias móviles con observaciones anteriores unidas por mes
+  natural, preservando los offsets de calendario;
 - recalcular features dentro de la ventana temporal correcta;
 - ajustar imputadores, escaladores y codificadores solo con train;
 - no usar el test para seleccionar variables;
