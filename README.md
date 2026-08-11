@@ -40,6 +40,7 @@ Actualmente están implementados:
 * dataset específico de modelado con lags calendario y ventanas históricas;
 * contrato y validación reproducible del dataset de modelado;
 * control point-in-time que separa mes de referencia y fecha de publicación;
+* purge de etiquetas de entrenamiento todavía no publicadas en cada forecast origin;
 * baseline estacional `lag_12`;
 * regresión Ridge como candidato interpretable;
 * `HistGradientBoostingRegressor` como candidato flexible;
@@ -53,10 +54,10 @@ Resultado resumido de la Entrega 4:
 | Indicador | Resultado |
 |---|---:|
 | Dataset de modelado | 12.691 filas y 37 columnas |
-| Validación del dataset | 68 PASS / 0 WARN / 0 FAIL |
+| Validación del dataset | 73 PASS / 0 WARN / 0 FAIL |
 | MAE baseline en validación agregada | 5.018,64 |
-| MAE mejor Ridge seguro en validación agregada | 5.175,99 |
-| MAE `hgb_raw_02` seguro en validación agregada | 7.349,42 |
+| MAE mejor Ridge seguro en validación agregada | 5.164,60 |
+| MAE `hgb_raw_02` seguro en validación agregada | 6.852,14 |
 | Solución operacional seleccionada | Baseline `lag_12` |
 
 Los resultados anteriores de HGB se conservan como trazabilidad de una
@@ -65,6 +66,9 @@ operacional point-in-time. La corrección de Entrega 4 fija el forecast origin
 al cierre del mes anterior al objetivo y excluye de `model_inputs` las
 estadísticas EOTR que todavía no estarían publicadas. El baseline estacional
 `lag_12` se mantiene como referencia operacional metodológicamente válida.
+La misma política purga de cada entrenamiento supervisado las etiquetas EOTR
+posteriores a `validation_start - 3 meses`; el límite efectivo es el mínimo
+entre ese cutoff de publicación y el fin estructural del fold.
 Como trazabilidad histórica, la especificación anterior de HGB obtuvo MAE
 2.760,59 frente a 3.045,00 del baseline en test, una mejora del 9,34 %. Esas
 cifras son retrospectivas y no se usan como evidencia operacional ni en la
@@ -335,7 +339,8 @@ data/metadata/modeling_data_quality_report.md
 La selección utiliza exclusivamente `validation_1`, `validation_2` y
 `validation_3`, aplica el umbral mínimo de mejora del 5 % y mantiene el
 baseline `lag_12` como campeón actual. El test final no interviene en la
-elección.
+elección. Ridge y HGB comparten el cutoff efectivo de etiquetas de train;
+el baseline no se entrena y no se ve afectado por el purge.
 
 ### 9. Estado de la evaluación final
 
@@ -343,6 +348,9 @@ La ventana de test configurada tiene estado `already_opened`. Por ello
 `evaluate_final_candidate.py` permanece protegido y no forma parte del flujo
 de ejecución vigente. Solo podrá volver a utilizarse cuando se configure
 conscientemente una futura ventana temporal realmente no utilizada.
+`evaluate_baseline.py` aplica la misma salvaguarda antes de cargar datos: su
+informe con test se conserva como evaluación histórica, mientras el baseline
+operacional se calcula en `select_models.py` solo sobre validación.
 
 Los artefactos anteriores no se regeneran y se conservan como trazabilidad
 histórica pre-point-in-time:
@@ -369,7 +377,7 @@ Ejecutar la suite:
 .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
 ```
 
-La suite actual contiene 21 pruebas automatizadas, más 5 subtests de inputs
+La suite actual contiene 31 pruebas automatizadas, más 5 subtests de inputs
 no disponibles, y se ejecuta también mediante GitHub Actions en cada `push` y
 `pull_request` sobre `main`.
 
@@ -461,7 +469,7 @@ docs/entregas/
 * Los datos provisionales pueden ser revisados por el INE.
 * Las variables de precios, gasto, clima y eventos todavía no están integradas.
 * El índice de presión turística es una señal descriptiva y no una medida directa de rentabilidad.
-* El mejor candidato de machine learning no mejora el baseline de forma estable en las tres validaciones.
+* El mejor candidato de machine learning no supera la gate pooled del 5 %; la estabilidad entre folds se mantiene como diagnóstico interpretativo.
 * El test final ya se ha abierto y no debe reutilizarse para reajustar hiperparámetros.
 * Todavía no se han implementado intervalos de predicción ni una política operativa de selección por provincia.
 

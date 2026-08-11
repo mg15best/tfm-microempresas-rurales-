@@ -1,5 +1,9 @@
 """
-Evalúa de forma reproducible el baseline estacional lag-12.
+Conserva la evaluación histórica del baseline estacional lag-12.
+
+La ejecución se bloquea mientras la ventana test configurada conste como
+ya abierta. La referencia operacional vigente se obtiene en select_models.py
+solo sobre validation_1/2/3.
 
 Entrada:
 - data/gold/gold_modeling_dataset_monthly.parquet
@@ -25,12 +29,14 @@ import pandas as pd
 try:
     from src.models.modeling_common import (
         PROJECT_ROOT,
+        ensure_test_window_is_untouched,
         load_config,
         resolve_project_path,
     )
 except ModuleNotFoundError:
     from modeling_common import (
         PROJECT_ROOT,
+        ensure_test_window_is_untouched,
         load_config,
         resolve_project_path,
     )
@@ -274,6 +280,10 @@ filas evaluables y las mismas particiones temporales.
 def main() -> int:
     """Ejecuta la evaluación reproducible del baseline."""
     config = load_config()
+    ensure_test_window_is_untouched(
+        config,
+        purpose="baseline evaluation",
+    )
     dataset_path = resolve_project_path(config["modeling_dataset"]["path"])
 
     if not dataset_path.exists():

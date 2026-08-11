@@ -1,12 +1,12 @@
 # Informe de calidad del dataset de modelado
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
-- **Generado en UTC:** `2026-08-11T11:56:08.670093+00:00`
+- **Generado en UTC:** `2026-08-11T12:49:44.605861+00:00`
 - **Filas:** 12,691
 - **Columnas:** 37
 - **Territorios:** 50
 - **Periodo:** 2005-01 → 2026-05
-- **Resultado:** 68 PASS / 0 WARN / 0 FAIL
+- **Resultado:** 73 PASS / 0 WARN / 0 FAIL
 
 ## Distribución temporal
 
@@ -38,6 +38,7 @@
 | point_in_time_classifications_non_conflicting | PASS | error | No existen clasificaciones de disponibilidad contradictorias. |
 | point_in_time_unavailable_inputs_absent | PASS | error | Ningun predictor no disponible aparece en model_inputs. |
 | point_in_time_eotr_minimum_lag | PASS | error | Todos los predictores EOTR operacionales cumplen el desfase minimo de 3 meses. |
+| point_in_time_eotr_lags_match_temporal_lineage | PASS | error | Los offsets EOTR operacionales coinciden con las reglas de linaje temporal. |
 | point_in_time_policy_declared | PASS | error | Politica declarada: el mes de referencia no demuestra por si solo disponibilidad por publicacion. Los controles anteriores comprueban la consistencia automatica de model_inputs contra esa politica. |
 | required_columns | PASS | error | Todas las columnas obligatorias están presentes. |
 | modeling_key_not_null | PASS | error | Filas con clave nula: 0. |
@@ -45,6 +46,10 @@
 | forecast_horizon | PASS | error | Filas con horizonte distinto de 1: 0. |
 | territory_count | PASS | error | Territorios observados: 50; esperados: 50. |
 | territory_level | PASS | error | Filas con nivel distinto de province: 0. |
+| training_label_availability_policy | PASS | error | Las etiquetas EOTR de train deben estar publicadas y su cutoff deriva del lag minimo seguro configurado: 3 meses. |
+| training_label_cutoff::validation_1 | PASS | error | validation_start=2021-06; structural_train_end=2021-05; availability_train_end=2021-03; effective_train_end=2021-03; max_label_used=2021-03; rows_before=8987; rows_after=8987; rows_purged=0. |
+| training_label_cutoff::validation_2 | PASS | error | validation_start=2022-06; structural_train_end=2022-05; availability_train_end=2022-03; effective_train_end=2022-03; max_label_used=2022-03; rows_before=9537; rows_after=9437; rows_purged=100. |
+| training_label_cutoff::validation_3 | PASS | error | validation_start=2023-06; structural_train_end=2023-05; availability_train_end=2023-03; effective_train_end=2023-03; max_label_used=2023-03; rows_before=10137; rows_after=10037; rows_purged=100. |
 | non_negative::target_overnight_stays_total | PASS | error | Valores negativos: 0. |
 | non_negative::lag_1_overnight_stays | PASS | error | Valores negativos: 0. |
 | non_negative::lag_3_overnight_stays | PASS | error | Valores negativos: 0. |

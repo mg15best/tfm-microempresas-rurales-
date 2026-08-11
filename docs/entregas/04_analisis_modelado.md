@@ -555,9 +555,19 @@ Se selecciona porque:
 
 La ocupación podrá utilizarse como indicador secundario de evaluación o como posible objetivo de una ampliación futura, pero no será el objetivo principal de esta estrategia.
 
-## 4.5. Variables de entrada previstas
+## 4.5. Inventario de variables y entradas operacionales
 
-### 4.5.1. Variables de calendario conocidas
+Las listas de los apartados 4.5.1-4.5.3 documentan columnas construidas o
+consideradas durante el análisis; no constituyen por sí mismas los inputs del
+modelo operacional. La especificación point-in-time vigente utiliza
+exclusivamente `year`, `month`, `quarter`, `is_summer`,
+`is_christmas_period`, `territory_id`, `lag_3_overnight_stays`,
+`lag_12_overnight_stays`, `lag_12_occupancy_rate_pct` y
+`lag_12_average_stay`. En particular, `covid_period`, los `lag_1_*`, las
+medias móviles y `yoy_change_overnight_stays` permanecen como inventario
+histórico o analítico, pero no son predictores operacionales actuales.
+
+### 4.5.1. Columnas de calendario inventariadas
 
 ```text
 year
@@ -570,7 +580,7 @@ covid_period
 
 `is_easter_period` solo se utilizará cuando se construya mediante un calendario anual reproducible.
 
-### 4.5.2. Variables históricas de demanda
+### 4.5.2. Columnas históricas de demanda inventariadas
 
 ```text
 lag_1_overnight_stays
@@ -581,7 +591,7 @@ rolling_mean_12m_overnight_stays
 yoy_change_overnight_stays
 ```
 
-### 4.5.3. Variables auxiliares con desfase
+### 4.5.3. Columnas auxiliares con desfase inventariadas
 
 ```text
 lag_1_occupancy_rate_pct
@@ -596,7 +606,8 @@ lag_1_establishments_estimated
 lag_1_staff_employed
 ```
 
-Estas variables solo se incorporarán si su disponibilidad histórica y utilidad predictiva quedan demostradas.
+Solo las variables enumeradas como inputs operacionales al inicio de esta
+sección se incorporan actualmente a Ridge y HGB.
 
 ### 4.5.4. Variable territorial
 
@@ -750,6 +761,23 @@ limitados a calendario, territorio, `lag_3_overnight_stays`,
 Las columnas excluidas de `model_inputs` permanecen en el dataset de modelado
 para mantener trazabilidad y permitir análisis no operacionales; no se usan en
 Ridge ni en HistGradientBoosting.
+
+La disponibilidad del predictor no resuelve por sí sola la disponibilidad de
+la etiqueta usada para entrenar. Para el primer target `V` de cada validación,
+la última etiqueta EOTR automáticamente publicable es `V - 3 meses`. Se
+distinguen el fin estructural declarado del fold y el fin por publicación; el
+fin efectivo de train es el mínimo de ambos. Ridge y HGB se ajustan solo con
+`target_month <= effective_train_end`; el baseline estacional no aprende del
+target y no requiere este purge.
+
+| Fold | Inicio validación | Fin estructural | Fin por disponibilidad | Fin efectivo | Máxima etiqueta usada | Filas antes | Filas después | Purgadas |
+|---|---|---|---|---|---|---:|---:|---:|
+| `validation_1` | 2021-06 | 2021-05 | 2021-03 | 2021-03 | 2021-03 | 8.987 | 8.987 | 0 |
+| `validation_2` | 2022-06 | 2022-05 | 2022-03 | 2022-03 | 2022-03 | 9.537 | 9.437 | 100 |
+| `validation_3` | 2023-06 | 2023-05 | 2023-03 | 2023-03 | 2023-03 | 10.137 | 10.037 | 100 |
+
+El validador comprueba automáticamente que la máxima etiqueta usada no supere
+el fin efectivo y que este no sea posterior al cutoff de disponibilidad.
 
 Las revisiones de datos provisionales son una limitación distinta. Esta
 entrega utiliza la versión histórica disponible en la Gold aprobada y no
@@ -985,8 +1013,11 @@ En la especificación point-in-time corregida, un modelo candidato sustituirá
 al baseline solo si cumple estas condiciones sobre
 `validation_1`, `validation_2` y `validation_3`:
 
-1. Obtiene una mejora agregada mínima del 5 % en MAE frente al baseline.
-2. Presenta resultados estables entre folds.
+1. Obtiene una mejora agregada mínima del 5 % en MAE frente al baseline. Esta
+   es la gate automática implementada.
+2. La estabilidad entre folds se revisa como criterio diagnóstico e
+   interpretativo, no como una segunda gate automática; ante evidencia
+   inestable o insuficiente se prefiere el baseline.
 3. No utiliza variables con fuga de información ni no disponibles en el
    forecast origin.
 4. Puede reproducirse con el pipeline y las dependencias del repositorio.
@@ -1176,7 +1207,7 @@ El modelo se considerará aceptable si:
 
 - mejora el baseline estacional al menos un 5 % en MAE agregado de validación;
 - no presenta leakage;
-- mantiene estabilidad entre folds;
+- presenta estabilidad suficiente entre folds como diagnóstico interpretativo;
 - produce salidas coherentes y no negativas;
 - puede integrarse y explicarse.
 
@@ -1334,6 +1365,11 @@ data/model_outputs/model_selection_validation_predictions.parquet
 ventana no utilizada, pero la política `already_opened` bloquea su ejecución
 sobre el test actual.
 
+`evaluate_baseline.py` también conserva su implementación histórica, pero
+aplica la misma protección antes de cargar datos mientras el test esté marcado
+como `already_opened`. La evaluación operacional vigente del baseline se
+realiza dentro de `select_models.py` solo sobre validation_1/2/3.
+
 También se han creado el contrato del dataset de modelado, las reglas de validación, la configuración temporal de folds, pruebas automatizadas de lags y medias móviles, métricas desagregadas e informes de selección.
 
 La Entrega 4 queda así alineada con el alcance actual del TFM: se ha construido un núcleo predictivo riguroso, comparable con una referencia sencilla y preparado para evolucionar hacia un futuro sistema de apoyo a la planificación turística rural.
@@ -1375,6 +1411,9 @@ data/model_outputs/model_selection_validation_predictions.parquet
 
 El último script está protegido mientras el test actual permanezca marcado
 como `already_opened`; no es un paso ejecutable de la especificación vigente.
+`evaluate_baseline.py` queda igualmente protegido para evitar que su informe
+histórico vuelva a consultar el test; dicho informe permanece versionado y
+etiquetado como trazabilidad, sin recalcular sus métricas.
 
 ### Informes y métricas
 
@@ -1434,16 +1473,16 @@ La clasificación de calidad de las filas es:
 La validación reproducible del dataset terminó con:
 
 ```text
-68 PASS / 0 WARN / 0 FAIL
+73 PASS / 0 WARN / 0 FAIL
 ```
 
-La suite automatizada contiene 21 pruebas, más 5 subtests de inputs no
+La suite automatizada contiene 31 pruebas, más 5 subtests de inputs no
 disponibles. Entre otros controles, verifica que los lags buscan el mes
 calendario exacto, que los huecos no se sustituyen por cero, que las medias
 móviles excluyen el mes objetivo y requieren ventanas completas, y que la
 configuración de inputs, disponibilidad point-in-time, protección del test,
-umbral de selección, folds, filas comparables y métricas mantiene el
-comportamiento esperado.
+umbral de selección, cutoffs de etiquetas train, folds, filas comparables y
+métricas mantiene el comportamiento esperado.
 
 Las dependencias de desarrollo se declaran en `requirements-dev.txt` y la suite se ejecuta también automáticamente mediante GitHub Actions en cada `push` y `pull_request` sobre `main`.
 
@@ -1463,9 +1502,10 @@ La cobertura común es:
 | Validation 1 | 600 | 550 |
 | Validation 2 | 600 | 600 |
 | Validation 3 | 600 | 600 |
-| Test | 600 | 600 |
 
 Las 50 filas no evaluables de `validation_1` corresponden al mes cuyo lag anual apunta a noviembre de 2020, uno de los meses globalmente ausentes.
+La ventana test ya abierta no se incluye en la selección vigente; su cobertura
+anterior se conserva únicamente en los informes históricos.
 
 ## 10.4. Resultado del baseline estacional
 
@@ -1482,7 +1522,7 @@ Resultados por partición:
 | Validation 1 | 550 | 9.116,56 | 16.454,67 | 44,60 % | -8.782,89 |
 | Validation 2 | 600 | 3.071,71 | 6.094,11 | 14,91 % | -909,25 |
 | Validation 3 | 600 | 3.209,14 | 5.552,10 | 15,16 % | -571,43 |
-| Test | 600 | 3.045,00 | 5.236,82 | 14,35 % | -49,18 |
+| Pooled validación | 1.750 | 5.018,64 | 10.411,37 | 24,19 % | -3.268,00 |
 
 El comportamiento excepcionalmente desfavorable de `validation_1` refleja la comparación entre la recuperación posterior y meses afectados por la ruptura de COVID-19. En las ventanas posteriores, el baseline muestra un rendimiento mucho más estable.
 
@@ -1500,22 +1540,22 @@ Ridge se implementó mediante un pipeline con:
 La mejor configuración fue:
 
 ```text
-alpha = 0.01
+alpha = 1.0
 ```
 
 Resultado agregado sobre las tres validaciones:
 
 | Modelo | Filas | MAE | MAE baseline | Mejora |
 |---|---:|---:|---:|---:|
-| Ridge | 1.750 | 5.175,99 | 5.018,64 | -3,14 % |
+| Ridge | 1.750 | 5.164,60 | 5.018,64 | -2,91 % |
 
 Resultado por fold con los inputs operacionales point-in-time:
 
 | Split | MAE Ridge | MAE baseline | Mejora |
 |---|---:|---:|---:|
-| Validation 1 | 9.309,50 | 9.116,56 | -2,12 % |
-| Validation 2 | 3.180,78 | 3.071,71 | -3,55 % |
-| Validation 3 | 3.382,14 | 3.209,14 | -5,39 % |
+| Validation 1 | 9.307,80 | 9.116,56 | -2,10 % |
+| Validation 2 | 3.137,73 | 3.071,71 | -2,15 % |
+| Validation 3 | 3.393,53 | 3.209,14 | -5,75 % |
 
 Ridge no mejora el baseline en ninguna validación ni en el agregado. Por ello
 queda descartado como candidato principal sin utilizar el test para
@@ -1545,15 +1585,15 @@ Resultado agregado de validación:
 
 | Modelo | Filas | MAE | MAE baseline | Mejora |
 |---|---:|---:|---:|---:|
-| `hgb_raw_02` | 1.750 | 7.349,42 | 5.018,64 | -46,44 % |
+| `hgb_raw_02` | 1.750 | 6.852,14 | 5.018,64 | -36,53 % |
 
 Resultado por fold:
 
 | Split | MAE HGB | MAE baseline | Mejora |
 |---|---:|---:|---:|
 | Validation 1 | 10.676,95 | 9.116,56 | -17,12 % |
-| Validation 2 | 7.927,89 | 3.071,71 | -158,09 % |
-| Validation 3 | 3.720,71 | 3.209,14 | -15,94 % |
+| Validation 2 | 6.238,44 | 3.071,71 | -103,09 % |
+| Validation 3 | 3.959,76 | 3.209,14 | -23,39 % |
 
 El candidato empeora el baseline en las tres validaciones con la especificación
 operacional corregida. Por tanto, no cumple el criterio de mejora agregada ni

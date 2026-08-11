@@ -38,6 +38,7 @@ try:
         get_validation_folds,
         load_config,
         load_modeling_dataset,
+        training_label_masks,
     )
 except ModuleNotFoundError:
     from modeling_common import (
@@ -50,6 +51,7 @@ except ModuleNotFoundError:
         get_validation_folds,
         load_config,
         load_modeling_dataset,
+        training_label_masks,
     )
 
 
@@ -197,7 +199,10 @@ def evaluate_model_fold(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Entrena un modelo en un fold expansivo y calcula métricas."""
     fold_name = fold["name"]
-    train_end = pd.Timestamp(fold["train_end"])
+    effective_train_end = pd.Period(
+        fold["effective_train_end"],
+        freq="M",
+    )
 
     target_column = str(config["target"]["column"])
 
@@ -210,9 +215,10 @@ def evaluate_model_fold(
 
     _, _, _, feature_columns = get_model_inputs(config)
 
-    train_mask = (
-        dataframe["target_date_month"].le(train_end)
-        & evaluable
+    train_before_purge_mask, train_mask = training_label_masks(
+        dataframe,
+        evaluable,
+        fold,
     )
 
     validation_mask = (
@@ -262,12 +268,30 @@ def evaluate_model_fold(
     ].to_numpy(dtype=float)
 
     metrics = calculate_metrics(actual, prediction)
+    max_training_target = (
+        train["target_date_month"].dt.to_period("M").max()
+    )
+    if max_training_target > effective_train_end:
+        raise AssertionError(
+            f"Etiqueta train posterior al cutoff efectivo en {fold_name}."
+        )
+
+    rows_before_purge = int(train_before_purge_mask.sum())
+    rows_after_purge = int(train_mask.sum())
 
     metrics_row: dict[str, Any] = {
         "evaluation_split": fold_name,
         "model": model_id,
-        "train_end": train_end.strftime("%Y-%m"),
-        "train_rows": int(len(train)),
+        "validation_start": fold["validation_start"],
+        "structural_train_end": fold["structural_train_end"],
+        "availability_train_end": fold["availability_train_end"],
+        "effective_train_end": fold["effective_train_end"],
+        "max_training_target": max_training_target.strftime("%Y-%m"),
+        "train_end": fold["effective_train_end"],
+        "train_rows_before_purge": rows_before_purge,
+        "train_rows_after_purge": rows_after_purge,
+        "train_rows_purged": rows_before_purge - rows_after_purge,
+        "train_rows": rows_after_purge,
         **metrics,
         "negative_raw_predictions": int(
             (prediction_raw < 0).sum()
@@ -295,6 +319,10 @@ def evaluate_model_fold(
     predictions["baseline_prediction"] = baseline_prediction
     predictions["model_prediction_raw"] = prediction_raw
     predictions["model_prediction"] = prediction
+    predictions["validation_start"] = fold["validation_start"]
+    predictions["structural_train_end"] = fold["structural_train_end"]
+    predictions["availability_train_end"] = fold["availability_train_end"]
+    predictions["effective_train_end"] = fold["effective_train_end"]
 
     return predictions, metrics_row
 
@@ -324,7 +352,15 @@ def add_baseline_metrics(
             {
                 "evaluation_split": split_name,
                 "model": baseline_id,
+                "validation_start": "not_applicable",
+                "structural_train_end": "not_applicable",
+                "availability_train_end": "not_applicable",
+                "effective_train_end": "not_applicable",
+                "max_training_target": "not_applicable",
                 "train_end": "not_applicable",
+                "train_rows_before_purge": np.nan,
+                "train_rows_after_purge": np.nan,
+                "train_rows_purged": np.nan,
                 "train_rows": np.nan,
                 **calculate_metrics(
                     group["actual"].to_numpy(dtype=float),
@@ -355,7 +391,15 @@ def add_pooled_metrics(
         {
             "evaluation_split": "validation_pooled",
             "model": baseline_id,
+            "validation_start": "not_applicable",
+            "structural_train_end": "not_applicable",
+            "availability_train_end": "not_applicable",
+            "effective_train_end": "not_applicable",
+            "max_training_target": "not_applicable",
             "train_end": "expanding_folds",
+            "train_rows_before_purge": np.nan,
+            "train_rows_after_purge": np.nan,
+            "train_rows_purged": np.nan,
             "train_rows": np.nan,
             **calculate_metrics(
                 baseline_data["actual"].to_numpy(dtype=float),
@@ -376,7 +420,15 @@ def add_pooled_metrics(
             {
                 "evaluation_split": "validation_pooled",
                 "model": model_id,
+                "validation_start": "not_applicable",
+                "structural_train_end": "expanding_folds",
+                "availability_train_end": "expanding_folds",
+                "effective_train_end": "expanding_folds",
+                "max_training_target": "expanding_folds",
                 "train_end": "expanding_folds",
+                "train_rows_before_purge": np.nan,
+                "train_rows_after_purge": np.nan,
+                "train_rows_purged": np.nan,
                 "train_rows": np.nan,
                 **calculate_metrics(
                     group["actual"].to_numpy(dtype=float),
@@ -475,6 +527,33 @@ def write_report(
     operational_inputs = ", ".join(
         f"`{feature}`" for feature in feature_columns
     )
+    cutoff_metrics = (
+        metrics[
+            metrics["model"].eq(str(hgb_result["model"]))
+            & metrics["evaluation_split"].isin(
+                config["model_selection"]["selection_splits"]
+            )
+        ]
+        .sort_values("evaluation_split")
+    )
+    cutoff_rows = "\n".join(
+        "| "
+        + " | ".join(
+            [
+                str(row.evaluation_split),
+                str(row.validation_start),
+                str(row.structural_train_end),
+                str(row.availability_train_end),
+                str(row.effective_train_end),
+                str(row.max_training_target),
+                str(int(row.train_rows_before_purge)),
+                str(int(row.train_rows_after_purge)),
+                str(int(row.train_rows_purged)),
+            ]
+        )
+        + " |"
+        for row in cutoff_metrics.itertuples()
+    )
 
     report = f"""# Selección reproducible de modelos mediante validación temporal
 
@@ -489,6 +568,18 @@ def write_report(
 - **Forecast origin:** `{availability["forecast_origin"]}`
 - **Desfase EOTR mínimo seguro:** {int(availability["minimum_safe_eotr_lag_months"])} meses
 - **Predictores operacionales:** {operational_inputs}
+
+## Disponibilidad point-in-time de etiquetas de entrenamiento
+
+Ridge y HGB aplican el mismo purge mensual. El límite estructural del fold
+no presupone que una etiqueta EOTR ya esté publicada: el límite de
+disponibilidad es `validation_start - minimum_safe_eotr_lag_months` y el
+límite efectivo es el más restrictivo de ambos. El baseline lag-12 no se
+entrena y no depende de este purge.
+
+| Fold | Inicio validación | Fin estructural train | Fin por disponibilidad | Fin efectivo train | Máxima etiqueta usada | Filas antes | Filas después | Filas purgadas |
+|---|---|---|---|---|---|---:|---:|---:|
+{cutoff_rows}
 
 ## Alcance reproducido
 
@@ -537,7 +628,10 @@ Configuración evaluada: `hgb_raw_02`.
 - Umbral mínimo configurado: {format_number(minimum_improvement)} %
 - Solución seleccionada tras validación: `{selected_solution}`
 
-El conjunto de test permanece excluido de este proceso.
+El umbral pooled de mejora igual o superior al {format_number(minimum_improvement)} %
+es la gate automática. La estabilidad entre folds se interpreta como
+diagnóstico: ante evidencia inestable o insuficiente se prefiere el baseline,
+sin consultar el test. El conjunto de test permanece excluido de este proceso.
 """
 
     REPORT_PATH.write_text(

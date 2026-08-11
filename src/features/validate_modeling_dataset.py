@@ -25,6 +25,16 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.models.modeling_common import (  # noqa: E402
+    common_evaluable_mask,
+    get_minimum_safe_training_label_lag,
+    get_validation_folds,
+    training_label_masks,
+)
+
 RULES_PATH = PROJECT_ROOT / "data" / "metadata" / "modeling_validation_rules.yml"
 MODELING_CONFIG_PATH = (
     PROJECT_ROOT
@@ -730,11 +740,11 @@ def validate_point_in_time_availability(
         availability["forecast_horizon_months"]
     ) == int(modeling_config["problem"]["forecast_horizon_months"])
     forecast_origin = str(availability.get("forecast_origin", ""))
-    canonical_forecast_origin = str(
-        availability.get("canonical_forecast_origin", "")
+    supported_forecast_origin = str(
+        rule.get("supported_forecast_origin", "")
     )
-    origin_supported = bool(canonical_forecast_origin) and (
-        forecast_origin == canonical_forecast_origin
+    origin_supported = bool(supported_forecast_origin) and (
+        forecast_origin == supported_forecast_origin
     )
     add_result(
         results,
@@ -808,6 +818,39 @@ def validate_point_in_time_availability(
         ),
     )
 
+    lineage_offsets = {
+        str(item["feature"]): int(item["offset_months"])
+        for item in rules["validation"]["temporal_integrity"]["lag_rules"]
+    }
+    operational_eotr = predictors.intersection(eotr_lags)
+    missing_lineage = sorted(operational_eotr.difference(lineage_offsets))
+    mismatched_lineage = sorted(
+        predictor
+        for predictor in operational_eotr.intersection(lineage_offsets)
+        if eotr_lags[predictor] != lineage_offsets[predictor]
+    )
+    lineage_consistent = not missing_lineage and not mismatched_lineage
+    lineage_details: list[str] = []
+    if missing_lineage:
+        lineage_details.append(
+            "sin regla temporal: " + ", ".join(missing_lineage)
+        )
+    if mismatched_lineage:
+        lineage_details.append(
+            "offset incoherente: " + ", ".join(mismatched_lineage)
+        )
+    add_result(
+        results,
+        "point_in_time_eotr_lags_match_temporal_lineage",
+        lineage_consistent,
+        (
+            "Los offsets EOTR operacionales coinciden con las reglas "
+            "de linaje temporal."
+            if lineage_consistent
+            else "; ".join(lineage_details)
+        ),
+    )
+
     policy_declared = bool(
         rule.get("distinguish_reference_month_from_publication", False)
         and rule.get("source_month_before_target_is_not_sufficient", False)
@@ -828,6 +871,74 @@ def validate_point_in_time_availability(
             "disponibilidad por publicacion."
         ),
     )
+
+
+def validate_training_label_availability(
+    modeling: pd.DataFrame,
+    modeling_config: dict[str, Any],
+    results: list[dict[str, str]],
+) -> None:
+    """Comprueba el purge point-in-time de etiquetas para cada fold."""
+    try:
+        minimum_lag = get_minimum_safe_training_label_lag(modeling_config)
+        folds = get_validation_folds(modeling_config, include_test=False)
+    except (KeyError, TypeError, ValueError) as error:
+        add_result(
+            results,
+            "training_label_availability_policy",
+            False,
+            str(error),
+        )
+        return
+
+    add_result(
+        results,
+        "training_label_availability_policy",
+        True,
+        (
+            "Las etiquetas EOTR de train deben estar publicadas y su cutoff "
+            "deriva del lag minimo seguro configurado: "
+            f"{minimum_lag} meses."
+        ),
+    )
+
+    evaluable = common_evaluable_mask(modeling, modeling_config)
+    for fold in folds:
+        before_purge, after_purge = training_label_masks(
+            modeling,
+            evaluable,
+            fold,
+        )
+        effective = pd.Period(fold["effective_train_end"], freq="M")
+        availability = pd.Period(
+            fold["availability_train_end"],
+            freq="M",
+        )
+        used_periods = modeling.loc[
+            after_purge,
+            "target_date_month",
+        ].dt.to_period("M")
+        max_label = used_periods.max() if not used_periods.empty else None
+        passed = (
+            effective <= availability
+            and max_label is not None
+            and max_label <= effective
+        )
+        add_result(
+            results,
+            f"training_label_cutoff::{fold['name']}",
+            passed,
+            (
+                f"validation_start={fold['validation_start']}; "
+                f"structural_train_end={fold['structural_train_end']}; "
+                f"availability_train_end={fold['availability_train_end']}; "
+                f"effective_train_end={fold['effective_train_end']}; "
+                f"max_label_used={max_label}; "
+                f"rows_before={int(before_purge.sum())}; "
+                f"rows_after={int(after_purge.sum())}; "
+                f"rows_purged={int(before_purge.sum() - after_purge.sum())}."
+            ),
+        )
 
 
 def validate_traceability(
@@ -1014,6 +1125,11 @@ def main() -> int:
     )
 
     if complete_structure:
+        validate_training_label_availability(
+            modeling,
+            modeling_config,
+            results,
+        )
         validate_ranges(
             modeling,
             rules,

@@ -21,6 +21,12 @@ CONFIG_PATH = (
     / "metadata"
     / "modeling_config.yml"
 )
+VALIDATION_RULES_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "metadata"
+    / "modeling_validation_rules.yml"
+)
 
 
 def load_config(
@@ -44,6 +50,27 @@ def load_config(
     return config
 
 
+def load_validation_rules(
+    rules_path: Path = VALIDATION_RULES_PATH,
+) -> dict[str, Any]:
+    """Carga las reglas normativas de validacion de modelado."""
+    if not rules_path.exists():
+        raise FileNotFoundError(
+            "No se encontraron las reglas de validacion: "
+            f"{rules_path.relative_to(PROJECT_ROOT)}"
+        )
+
+    with rules_path.open("r", encoding="utf-8") as file:
+        rules = yaml.safe_load(file)
+
+    if not isinstance(rules, dict):
+        raise ValueError(
+            "modeling_validation_rules.yml no contiene un objeto YAML valido."
+        )
+
+    return rules
+
+
 def resolve_project_path(path_text: str) -> Path:
     """Resuelve una ruta relativa respecto a la raiz del proyecto."""
     path = Path(path_text)
@@ -53,6 +80,7 @@ def resolve_project_path(path_text: str) -> Path:
 def validate_model_input_availability(
     config: dict[str, Any],
     predictors: list[str],
+    validation_rules: dict[str, Any] | None = None,
 ) -> None:
     """Valida disponibilidad operacional de predictores en el forecast origin."""
     availability = config.get("point_in_time_availability")
@@ -71,16 +99,20 @@ def validate_model_input_availability(
             "el horizonte del problema."
         )
 
+    rules = validation_rules or load_validation_rules()
+    point_in_time_rules = rules["validation"][
+        "point_in_time_availability"
+    ]
     forecast_origin = str(availability["forecast_origin"])
-    canonical_forecast_origin = str(
-        availability["canonical_forecast_origin"]
+    supported_forecast_origin = str(
+        point_in_time_rules["supported_forecast_origin"]
     )
 
-    if forecast_origin != canonical_forecast_origin:
+    if forecast_origin != supported_forecast_origin:
         raise ValueError(
             "El forecast origin configurado no coincide con el valor "
             "canonico soportado para la Entrega 4: "
-            f"{canonical_forecast_origin}."
+            f"{supported_forecast_origin}."
         )
 
     minimum_lag = int(availability["minimum_safe_eotr_lag_months"])
@@ -132,6 +164,139 @@ def validate_model_input_availability(
             "model_inputs contiene predictores EOTR con un desfase inferior "
             f"al minimo seguro de {minimum_lag} meses: "
             + ", ".join(unsafe_eotr)
+        )
+
+    lineage_offsets = {
+        str(item["feature"]): int(item["offset_months"])
+        for item in rules["validation"]["temporal_integrity"]["lag_rules"]
+    }
+    missing_lineage = sorted(
+        predictor_set.intersection(eotr_lags).difference(lineage_offsets)
+    )
+    mismatched_lineage = sorted(
+        name
+        for name in predictor_set.intersection(eotr_lags, lineage_offsets)
+        if eotr_lags[name] != lineage_offsets[name]
+    )
+    if missing_lineage or mismatched_lineage:
+        details: list[str] = []
+        if missing_lineage:
+            details.append("sin regla temporal: " + ", ".join(missing_lineage))
+        if mismatched_lineage:
+            details.append(
+                "offset incoherente: " + ", ".join(mismatched_lineage)
+            )
+        raise ValueError(
+            "La clasificacion EOTR no coincide con temporal_integrity: "
+            + "; ".join(details)
+        )
+
+
+def get_minimum_safe_training_label_lag(
+    config: dict[str, Any],
+) -> int:
+    """Obtiene el lag de publicacion que tambien rige las etiquetas train."""
+    availability = config.get("point_in_time_availability")
+    if not isinstance(availability, dict):
+        raise ValueError(
+            "Falta la seccion point_in_time_availability en la configuracion."
+        )
+
+    training_labels = availability.get("training_labels")
+    if not isinstance(training_labels, dict):
+        raise ValueError(
+            "Falta declarar la politica point-in-time de training_labels."
+        )
+
+    if not bool(
+        training_labels.get("require_published_before_forecast_origin")
+    ):
+        raise ValueError(
+            "Las etiquetas de entrenamiento EOTR deben estar publicadas "
+            "antes del forecast origin."
+        )
+
+    if not bool(
+        training_labels.get("cutoff_uses_minimum_safe_eotr_lag_months")
+    ):
+        raise ValueError(
+            "El cutoff de etiquetas debe derivar de "
+            "minimum_safe_eotr_lag_months."
+        )
+
+    minimum_lag = int(availability["minimum_safe_eotr_lag_months"])
+    if minimum_lag < 1:
+        raise ValueError(
+            "minimum_safe_eotr_lag_months debe ser al menos 1."
+        )
+    return minimum_lag
+
+
+def calculate_training_label_cutoffs(
+    validation_start: str | pd.Timestamp | pd.Period,
+    structural_train_end: str | pd.Timestamp | pd.Period,
+    minimum_safe_target_lag_months: int,
+) -> dict[str, pd.Period]:
+    """Calcula cutoffs mensuales estructural, de publicacion y efectivo."""
+    minimum_lag = int(minimum_safe_target_lag_months)
+    if minimum_lag < 1:
+        raise ValueError(
+            "minimum_safe_target_lag_months debe ser al menos 1."
+        )
+
+    validation_period = pd.Period(validation_start, freq="M")
+    structural_period = pd.Period(structural_train_end, freq="M")
+    availability_period = validation_period - minimum_lag
+    effective_period = min(structural_period, availability_period)
+
+    return {
+        "validation_start": validation_period,
+        "structural_train_end": structural_period,
+        "availability_train_end": availability_period,
+        "effective_train_end": effective_period,
+    }
+
+
+def training_label_masks(
+    dataframe: pd.DataFrame,
+    evaluable: pd.Series,
+    fold: dict[str, str],
+) -> tuple[pd.Series, pd.Series]:
+    """Crea mascaras train antes y despues del purge de disponibilidad."""
+    structural_end = pd.Period(fold["structural_train_end"], freq="M")
+    availability_end = pd.Period(fold["availability_train_end"], freq="M")
+    effective_end = pd.Period(fold["effective_train_end"], freq="M")
+
+    if effective_end > availability_end:
+        raise ValueError(
+            f"Cutoff efectivo posterior a disponibilidad en {fold['name']}."
+        )
+
+    target_periods = dataframe["target_date_month"].dt.to_period("M")
+    before_purge = target_periods.le(structural_end) & evaluable
+    after_purge = target_periods.le(effective_end) & evaluable
+
+    if after_purge.any():
+        max_label = target_periods.loc[after_purge].max()
+        if max_label > effective_end:
+            raise AssertionError(
+                f"Etiqueta train posterior al cutoff efectivo en {fold['name']}."
+            )
+
+    return before_purge, after_purge
+
+
+def ensure_test_window_is_untouched(
+    config: dict[str, Any],
+    *,
+    purpose: str,
+) -> None:
+    """Impide reutilizar una ventana test ya abierta."""
+    final_test = config["validation"]["final_test"]
+    if str(final_test.get("test_status", "")) == "already_opened":
+        raise RuntimeError(
+            "Final test window is already opened and cannot be reused for "
+            f"{purpose}. Use a future untouched evaluation window."
         )
 
 
@@ -189,17 +354,25 @@ def get_validation_folds(
 ) -> list[dict[str, str]]:
     """Construye los folds expansivos definidos en la configuracion."""
     folds: list[dict[str, str]] = []
+    minimum_lag = get_minimum_safe_training_label_lag(config)
 
     for fold in config["validation"]["folds"]:
-        train_end = pd.Period(
+        cutoffs = calculate_training_label_cutoffs(
+            str(fold["validation_start"]),
             str(fold["train_end"]),
-            freq="M",
-        ).to_timestamp(how="start")
+            minimum_lag,
+        )
 
         folds.append(
             {
                 "name": str(fold["name"]),
-                "train_end": train_end.strftime("%Y-%m-%d"),
+                **{
+                    name: period.strftime("%Y-%m")
+                    for name, period in cutoffs.items()
+                },
+                "train_end": cutoffs["effective_train_end"].to_timestamp(
+                    how="start"
+                ).strftime("%Y-%m-%d"),
             }
         )
 
@@ -209,14 +382,22 @@ def get_validation_folds(
             freq="M",
         )
 
-        test_train_end = (
-            test_start - 1
-        ).to_timestamp(how="start")
+        cutoffs = calculate_training_label_cutoffs(
+            test_start,
+            test_start - 1,
+            minimum_lag,
+        )
 
         folds.append(
             {
                 "name": "test",
-                "train_end": test_train_end.strftime("%Y-%m-%d"),
+                **{
+                    name: period.strftime("%Y-%m")
+                    for name, period in cutoffs.items()
+                },
+                "train_end": cutoffs["effective_train_end"].to_timestamp(
+                    how="start"
+                ).strftime("%Y-%m-%d"),
             }
         )
 

@@ -1,4 +1,12 @@
-# Evaluación del baseline estacional lag-12
+# Evaluación histórica del baseline estacional lag-12
+
+> **Advertencia point-in-time:** este informe conserva por trazabilidad una
+> evaluación realizada cuando la ventana `test` todavía se consultaba. Esa
+> ventana consta ahora como `already_opened` y no puede reutilizarse para una
+> decisión independiente. La referencia operacional vigente del baseline se
+> calcula exclusivamente sobre `validation_1`, `validation_2` y `validation_3`
+> mediante `select_models.py`; las métricas históricas siguientes no se han
+> recalculado.
 
 - **Dataset:** `data\gold\gold_modeling_dataset_monthly.parquet`
 - **Modelo:** `seasonal_naive_lag_12`

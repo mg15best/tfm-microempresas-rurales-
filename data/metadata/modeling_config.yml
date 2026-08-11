@@ -142,13 +142,16 @@ feature_engineering:
 point_in_time_availability:
   forecast_horizon_months: 1
   forecast_origin: "end_of_month_t_before_target_t_plus_1"
-  canonical_forecast_origin: "end_of_month_t_before_target_t_plus_1"
   statistical_source: "INE EOTR"
   policy: >-
     Una observacion dependiente de publicacion EOTR solo se considera
     disponible automaticamente con al menos tres meses de desfase respecto
     al mes objetivo, salvo regla explicita que demuestre otra disponibilidad.
   minimum_safe_eotr_lag_months: 3
+
+  training_labels:
+    require_published_before_forecast_origin: true
+    cutoff_uses_minimum_safe_eotr_lag_months: true
 
   known_in_advance_predictors:
     - "year"
