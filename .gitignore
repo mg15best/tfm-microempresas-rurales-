@@ -12,3 +12,6 @@ venv/
 # Data and generated artifacts
 *.log
 .DS_Store
+
+# Local development assistants
+.codex/
