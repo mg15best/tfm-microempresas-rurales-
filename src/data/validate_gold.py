@@ -1286,9 +1286,17 @@ def validate_dataset(
     # Estado provisional
     # -------------------------------------------------------------
 
-    provisional_from = pd.Timestamp(
-        dataset_rules["provisional_from"]
+    provisional_window_months = int(
+        dataset_rules["provisional_window_months"]
     )
+    if provisional_window_months < 1:
+        raise ValueError(
+            "provisional_window_months debe ser un entero positivo."
+        )
+    latest_month = dates.max().to_period("M")
+    provisional_from = (
+        latest_month - (provisional_window_months - 1)
+    ).to_timestamp()
 
     expected_provisional = dates >= provisional_from
 
@@ -1310,7 +1318,10 @@ def validate_dataset(
         passed=invalid_provisional == 0,
         details=(
             "Filas con clasificación provisional "
-            f"incoherente: {invalid_provisional:,}"
+            f"incoherente: {invalid_provisional:,}. "
+            f"Vintage hasta {latest_month}; ventana móvil de "
+            f"{provisional_window_months} meses desde "
+            f"{provisional_from:%Y-%m}."
         ),
     )
 

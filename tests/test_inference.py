@@ -17,6 +17,7 @@ from src.models.inference import (
     UnsupportedHorizonError,
     predict_next_month,
 )
+from src.models.modeling_common import load_config
 
 
 class TestInference(unittest.TestCase):
@@ -48,11 +49,13 @@ class TestInference(unittest.TestCase):
     @staticmethod
     def _build_dataframe() -> pd.DataFrame:
         rows = [
+            ("ES-PROV-01", "Provincia A", "2025-01", 101.0, False),
             ("ES-PROV-01", "Provincia A", "2025-05", 100.0, False),
-            ("ES-PROV-01", "Provincia A", "2025-06", 123.0, False),
+            ("ES-PROV-01", "Provincia A", "2025-06", 118.0, False),
             ("ES-PROV-01", "Provincia A", "2025-07", 999.0, False),
+            ("ES-PROV-01", "Provincia A", "2025-09", 123.0, False),
             ("ES-PROV-01", "Provincia A", "2026-05", 500.0, True),
-            ("ES-PROV-02", "Provincia B", "2025-06", 456.0, False),
+            ("ES-PROV-02", "Provincia B", "2025-09", 456.0, False),
             ("ES-PROV-02", "Provincia B", "2026-05", 600.0, True),
         ]
         return pd.DataFrame(
@@ -74,7 +77,7 @@ class TestInference(unittest.TestCase):
         dataframe: pd.DataFrame | None = None,
         **kwargs: object,
     ):
-        kwargs.setdefault("as_of_date", "2026-05-31")
+        kwargs.setdefault("as_of_date", "2026-08-13")
         return predict_next_month(
             "ES-PROV-01",
             dataframe=self.dataframe if dataframe is None else dataframe,
@@ -98,14 +101,14 @@ class TestInference(unittest.TestCase):
                 "ES-PROV-99",
                 dataframe=self.dataframe,
                 config=self.config,
-                as_of_date="2026-05-31",
+                as_of_date="2026-08-13",
             )
 
     def test_reference_month_is_exactly_target_minus_twelve(self) -> None:
         result = self._predict()
 
-        self.assertEqual(result.target_month_id, "2026-06")
-        self.assertEqual(result.reference_month_id, "2025-06")
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.reference_month_id, "2025-09")
 
     def test_prediction_equals_exact_reference_value(self) -> None:
         result = self._predict()
@@ -115,7 +118,7 @@ class TestInference(unittest.TestCase):
 
     def test_global_reference_gap_is_blocking(self) -> None:
         dataframe = self.dataframe.loc[
-            ~self.dataframe["month_id"].eq("2025-06")
+            ~self.dataframe["month_id"].eq("2025-09")
         ]
 
         with self.assertRaisesRegex(GlobalReferenceGapError, "gap global"):
@@ -125,7 +128,7 @@ class TestInference(unittest.TestCase):
         dataframe = self.dataframe.loc[
             ~(
                 self.dataframe["territory_id"].eq("ES-PROV-01")
-                & self.dataframe["month_id"].eq("2025-06")
+                & self.dataframe["month_id"].eq("2025-09")
             )
         ]
 
@@ -139,7 +142,7 @@ class TestInference(unittest.TestCase):
         dataframe = self.dataframe.loc[
             ~(
                 self.dataframe["territory_id"].eq("ES-PROV-01")
-                & self.dataframe["month_id"].eq("2025-06")
+                & self.dataframe["month_id"].eq("2025-09")
             )
         ]
 
@@ -150,7 +153,7 @@ class TestInference(unittest.TestCase):
         dataframe = self.dataframe.copy()
         reference_mask = (
             dataframe["territory_id"].eq("ES-PROV-01")
-            & dataframe["month_id"].eq("2025-06")
+            & dataframe["month_id"].eq("2025-09")
         )
         dataframe.loc[reference_mask, "overnight_stays_total"] = 0.0
 
@@ -162,7 +165,7 @@ class TestInference(unittest.TestCase):
         dataframe = self.dataframe.copy()
         reference_mask = (
             dataframe["territory_id"].eq("ES-PROV-01")
-            & dataframe["month_id"].eq("2025-06")
+            & dataframe["month_id"].eq("2025-09")
         )
         dataframe.loc[reference_mask, "is_provisional"] = True
 
@@ -174,58 +177,37 @@ class TestInference(unittest.TestCase):
             {warning.code for warning in result.warnings},
         )
 
-    def test_current_snapshot_is_operational_future(self) -> None:
+    def test_mid_month_defines_an_operational_next_month_forecast(self) -> None:
         result = self._predict()
 
-        self.assertEqual(result.freshness_status, "operational_future")
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.operational_status, "forecast_ready")
         self.assertTrue(result.is_operational)
-        self.assertNotIn(
-            "stale_snapshot_target_not_future",
-            {warning.code for warning in result.warnings},
-        )
 
-    def test_target_in_current_month_is_stale(self) -> None:
-        result = self._predict(as_of_date="2026-06-01")
+    def test_last_day_of_month_still_targets_next_month(self) -> None:
+        result = self._predict(as_of_date="2026-08-31")
 
-        self.assertEqual(
-            result.freshness_status,
-            "stale_target_not_future",
-        )
-        self.assertFalse(result.is_operational)
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.reference_month_id, "2025-09")
 
-    def test_past_target_is_stale_and_warned(self) -> None:
-        result = predict_next_month(
-            "ES-PROV-01",
-            dataframe=self.dataframe,
-            config=self.config,
-            as_of_date="2026-08-11",
-        )
+    def test_latest_available_month_is_context_not_forecast_origin(self) -> None:
+        result = self._predict(as_of_date="2026-08-13")
 
-        self.assertEqual(
-            result.freshness_status,
-            "stale_target_not_future",
-        )
-        self.assertFalse(result.is_operational)
-        self.assertIn(
-            "stale_snapshot_target_not_future",
-            {warning.code for warning in result.warnings},
-        )
+        self.assertEqual(result.latest_available_month_id, "2026-05")
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertTrue(result.is_operational)
 
-    def test_as_of_date_changes_only_freshness(self) -> None:
-        future = self._predict(as_of_date="2026-05-31")
-        stale = self._predict(as_of_date="2026-06-01")
+    def test_injected_as_of_date_controls_target(self) -> None:
+        august = self._predict(as_of_date="2026-08-13")
+        may = self._predict(as_of_date="2026-05-31")
 
-        self.assertEqual(future.target_month_id, stale.target_month_id)
-        self.assertEqual(
-            future.predicted_overnight_stays_total,
-            stale.predicted_overnight_stays_total,
-        )
-        self.assertNotEqual(future.freshness_status, stale.freshness_status)
+        self.assertEqual(august.target_month_id, "2026-09")
+        self.assertEqual(may.target_month_id, "2026-06")
 
-    def test_default_freshness_uses_local_system_date(self) -> None:
+    def test_default_forecast_origin_uses_local_system_date(self) -> None:
         with patch(
             "src.models.inference._local_today",
-            return_value=date(2026, 6, 1),
+            return_value=date(2026, 8, 13),
         ):
             result = predict_next_month(
                 "ES-PROV-01",
@@ -233,37 +215,26 @@ class TestInference(unittest.TestCase):
                 config=self.config,
             )
 
-        self.assertEqual(
-            result.freshness_status,
-            "stale_target_not_future",
-        )
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.reference_month_id, "2025-09")
 
     def test_month_arithmetic_crosses_year_boundary(self) -> None:
-        dataframe = self.dataframe.copy()
-        reference_mask = dataframe["month_id"].eq("2025-06")
-        last_month_mask = dataframe["month_id"].eq("2026-05")
-        dataframe.loc[reference_mask, "month_id"] = "2026-01"
-        dataframe.loc[reference_mask, "date_month"] = pd.Timestamp("2026-01-01")
-        dataframe.loc[last_month_mask, "month_id"] = "2026-12"
-        dataframe.loc[last_month_mask, "date_month"] = pd.Timestamp("2026-12-01")
-
         result = self._predict(
-            dataframe,
-            as_of_date="2026-12-31",
+            as_of_date="2025-12-31",
         )
 
-        self.assertEqual(result.target_month_id, "2027-01")
-        self.assertEqual(result.reference_month_id, "2026-01")
-        self.assertEqual(result.predicted_overnight_stays_total, 123.0)
+        self.assertEqual(result.target_month_id, "2026-01")
+        self.assertEqual(result.reference_month_id, "2025-01")
+        self.assertEqual(result.predicted_overnight_stays_total, 101.0)
 
     def test_reference_lookup_ignores_time_within_month_start(self) -> None:
         dataframe = self.dataframe.copy()
-        reference_mask = dataframe["month_id"].eq("2025-06")
+        reference_mask = dataframe["month_id"].eq("2025-09")
         dataframe.loc[reference_mask, "date_month"] += pd.Timedelta(hours=12)
 
         result = self._predict(dataframe)
 
-        self.assertEqual(result.reference_month_id, "2025-06")
+        self.assertEqual(result.reference_month_id, "2025-09")
         self.assertEqual(result.predicted_overnight_stays_total, 123.0)
 
     def test_empty_dataset_is_blocking(self) -> None:
@@ -285,7 +256,7 @@ class TestInference(unittest.TestCase):
                 "ES-PROV-01",
                 dataframe=self.dataframe,
                 config_path=Path("configuration-that-does-not-exist.yml"),
-                as_of_date="2026-05-31",
+                as_of_date="2026-08-13",
             )
 
     def test_incompatible_baseline_configuration_is_blocking(self) -> None:
@@ -300,7 +271,7 @@ class TestInference(unittest.TestCase):
                 "ES-PROV-01",
                 dataframe=self.dataframe,
                 config=config,
-                as_of_date="2026-05-31",
+                as_of_date="2026-08-13",
             )
 
     def test_incompatible_selected_solution_is_blocking(self) -> None:
@@ -317,7 +288,7 @@ class TestInference(unittest.TestCase):
                 "ES-PROV-01",
                 dataframe=self.dataframe,
                 config=config,
-                as_of_date="2026-05-31",
+                as_of_date="2026-08-13",
             )
 
     def test_missing_required_column_is_blocking(self) -> None:
@@ -339,7 +310,7 @@ class TestInference(unittest.TestCase):
         dataframe = self.dataframe.copy()
         reference_mask = (
             dataframe["territory_id"].eq("ES-PROV-01")
-            & dataframe["month_id"].eq("2025-06")
+            & dataframe["month_id"].eq("2025-09")
         )
         dataframe.loc[reference_mask, "overnight_stays_total"] = None
 
@@ -354,7 +325,7 @@ class TestInference(unittest.TestCase):
                 dataframe = self.dataframe.copy()
                 reference_mask = (
                     dataframe["territory_id"].eq("ES-PROV-01")
-                    & dataframe["month_id"].eq("2025-06")
+                    & dataframe["month_id"].eq("2025-09")
                 )
                 dataframe.loc[
                     reference_mask,
@@ -383,6 +354,35 @@ class TestInference(unittest.TestCase):
 
                 with self.assertRaisesRegex(InferenceDataError, column):
                     self._predict(dataframe)
+
+
+class TestInferenceIntegration(unittest.TestCase):
+    """Integracion segura con la Gold operacional versionada."""
+
+    def test_real_gold_supports_forecast_from_august_2026(self) -> None:
+        config = load_config()
+        gold = pd.read_parquet(config["source_dataset"]["path"])
+        reference_rows = gold.loc[
+            gold["month_id"].astype(str).eq("2025-09")
+            & gold["overnight_stays_total"].notna()
+        ].sort_values("territory_id")
+        self.assertFalse(reference_rows.empty)
+        reference = reference_rows.iloc[0]
+
+        result = predict_next_month(
+            str(reference["territory_id"]),
+            as_of_date="2026-08-13",
+        )
+
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.reference_month_id, "2025-09")
+        self.assertEqual(result.latest_available_month_id, "2026-05")
+        self.assertEqual(
+            result.predicted_overnight_stays_total,
+            float(reference["overnight_stays_total"]),
+        )
+        self.assertEqual(result.operational_status, "forecast_ready")
+        self.assertTrue(result.is_operational)
 
 
 if __name__ == "__main__":

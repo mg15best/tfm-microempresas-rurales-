@@ -4,7 +4,7 @@ project:
   target_granularity: "territory_month"
   target_variable: "overnight_stays_total"
   source_policy: "official_spanish_sources_only"
-  last_source_review: "2026-07-14"
+  last_source_review: "2026-08-13"
 
 source_groups:
 
@@ -25,6 +25,12 @@ source_groups:
       territory_level: "province"
       historical_start: "2005-01"
       publication_status: "includes_provisional_data"
+
+      provisionality:
+        strategy: "rolling_latest_12_months"
+        window_months: 12
+        basis: "INE revises provisional data when the same period of the following year is published."
+        evidence_url: "https://www.ine.es/dyngs/Prensa/EOAT0626.htm"
 
       dimensions:
         - "province"
@@ -50,7 +56,7 @@ source_groups:
         - "domestic_foreign_demand_analysis"
 
       limitations:
-        - "Data from June 2025 onwards may be provisional."
+        - "The latest 12 natural months in each complete monthly vintage are provisional."
         - "Changes in establishment directories can affect comparability between years."
         - "Some provincial data from the COVID-19 period do not meet the usual publication quality standard."
         - "Provincial totals must not be added to autonomous-community or national totals."
@@ -70,6 +76,12 @@ source_groups:
       territory_level: "province"
       historical_start: "2005-01"
       publication_status: "includes_provisional_data"
+
+      provisionality:
+        strategy: "rolling_latest_12_months"
+        window_months: 12
+        basis: "INE revises provisional data when the same period of the following year is published."
+        evidence_url: "https://www.ine.es/dyngs/Prensa/EOAT0626.htm"
 
       dimensions:
         - "province"
@@ -95,6 +107,7 @@ source_groups:
         - "employment_context"
 
       limitations:
+        - "The latest 12 natural months in each complete monthly vintage are provisional."
         - "Published percentages must be stored on a 0-100 scale."
         - "Estimated establishments and bed places are not business-register counts."
         - "Provincial totals must not be mixed with other territorial levels."

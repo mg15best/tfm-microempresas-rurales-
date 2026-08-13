@@ -46,9 +46,10 @@ PROCESSED_DIRECTORY = (
 # Estado provisional indicado por el INE
 # ---------------------------------------------------------------------
 
-# En la revisión de las tablas realizada el 14 de julio de 2026,
-# el INE señala como provisionales los datos desde junio de 2025.
-PROVISIONAL_FROM = pd.Timestamp("2025-06-01")
+# El INE revisa cada periodo provisional al publicar el mismo periodo del
+# año siguiente: una vintage mensual completa tiene una ventana móvil de
+# doce meses provisionales.
+PROVISIONAL_WINDOW_MONTHS = 12
 
 
 # ---------------------------------------------------------------------
@@ -391,8 +392,12 @@ def add_time_columns(
         .astype("Int8")
     )
 
+    latest_month = result["month"].max().to_period("M")
+    provisional_from = (
+        latest_month - (PROVISIONAL_WINDOW_MONTHS - 1)
+    ).to_timestamp()
     result["is_provisional"] = (
-        result["month"] >= PROVISIONAL_FROM
+        result["month"] >= provisional_from
     ).astype("boolean")
 
     result["data_status"] = (

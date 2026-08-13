@@ -105,7 +105,7 @@ class MetricsReconciliationError(DashboardDataError):
 
 
 class LineageMismatchError(DashboardDataError):
-    """Los artefactos pertenecen a snapshots incompatibles."""
+    """Un artefacto no declara un lineage interno valido."""
 
 
 @dataclass(frozen=True)
@@ -123,17 +123,18 @@ class TerritoryValidationMetrics:
 
 @dataclass(frozen=True)
 class DashboardLineage:
-    """Lineage real de las fuentes combinadas por la capa."""
+    """Provenance separada de operacion y evaluacion congelada."""
 
-    source_snapshot_id: str
-    gold_pipeline_run_id: str
-    gold_data_version: str
-    validation_pipeline_run_id: str
-    validation_data_version: str
-    gold_dataset_path: str
-    validation_dataset_path: str
-    validation_predictions_path: str
-    validation_metrics_path: str
+    operational_source_snapshot_id: str
+    operational_pipeline_run_id: str
+    operational_data_version: str
+    evaluation_source_snapshot_id: str
+    evaluation_pipeline_run_id: str
+    evaluation_data_version: str
+    operational_dataset_path: str
+    evaluation_dataset_path: str
+    evaluation_predictions_path: str
+    evaluation_metrics_path: str
 
 
 @dataclass(frozen=True)
@@ -181,7 +182,11 @@ def _required_mapping(
 def _dashboard_contract(
     config: Mapping[str, Any],
 ) -> tuple[str, tuple[str, ...]]:
-    """Valida baseline seleccionado y folds autorizados."""
+    """Valida la compatibilidad semantica de operacion y evaluacion."""
+    problem = _required_mapping(config, "problem")
+    target = _required_mapping(config, "target")
+    source = _required_mapping(config, "source_dataset")
+    modeling = _required_mapping(config, "modeling_dataset")
     baseline = _required_mapping(config, "baseline")
     fallback = _required_mapping(config, "fallback")
     selection = _required_mapping(
@@ -189,6 +194,22 @@ def _dashboard_contract(
         "if_no_candidate_beats_baseline",
     )
     validation = _required_mapping(config, "validation")
+
+    compatible_contract = (
+        problem.get("territory_level") == "province"
+        and problem.get("forecast_frequency") == "monthly"
+        and problem.get("forecast_horizon_months") == 1
+        and target.get("source_column") == "overnight_stays_total"
+        and source.get("expected_territory_level") == "province"
+        and modeling.get("forecast_horizon") == 1
+        and baseline.get("prediction_feature")
+        == "lag_12_overnight_stays"
+    )
+    if not compatible_contract:
+        raise DashboardDataError(
+            "Operacion y evaluacion no comparten el contrato provincial "
+            "mensual de pernoctaciones, horizonte uno y regla lag-12."
+        )
 
     baseline_id = str(baseline.get("name", ""))
     selected_solution = str(selection.get("selected_solution", ""))
@@ -630,16 +651,12 @@ def validate_lineage_compatibility(
     unique_predictions: pd.DataFrame,
     config: Mapping[str, Any],
 ) -> DashboardLineage:
-    """Valida el snapshot comun y conserva lineage de cada etapa."""
+    """Valida cada lineage y conserva separadas ambas provenances."""
     gold_snapshot = _single_lineage_value(gold, "source_snapshot_id")
     validation_snapshot = _single_lineage_value(
         unique_predictions,
         "source_snapshot_id",
     )
-    if gold_snapshot != validation_snapshot:
-        raise LineageMismatchError(
-            "Gold y predicciones proceden de source_snapshot_id distintos."
-        )
 
     source = _required_mapping(config, "source_dataset")
     modeling = _required_mapping(config, "modeling_dataset")
@@ -657,25 +674,29 @@ def validate_lineage_compatibility(
         )
 
     return DashboardLineage(
-        source_snapshot_id=gold_snapshot,
-        gold_pipeline_run_id=_single_lineage_value(gold, "pipeline_run_id"),
-        gold_data_version=_single_lineage_value(gold, "data_version"),
-        validation_pipeline_run_id=_single_lineage_value(
+        operational_source_snapshot_id=gold_snapshot,
+        operational_pipeline_run_id=_single_lineage_value(
+            gold,
+            "pipeline_run_id",
+        ),
+        operational_data_version=_single_lineage_value(gold, "data_version"),
+        evaluation_source_snapshot_id=validation_snapshot,
+        evaluation_pipeline_run_id=_single_lineage_value(
             unique_predictions,
             "pipeline_run_id",
         ),
-        validation_data_version=_single_lineage_value(
+        evaluation_data_version=_single_lineage_value(
             unique_predictions,
             "data_version",
         ),
-        gold_dataset_path=str(gold_path.relative_to(PROJECT_ROOT)),
-        validation_dataset_path=str(
+        operational_dataset_path=str(gold_path.relative_to(PROJECT_ROOT)),
+        evaluation_dataset_path=str(
             configured_validation_path.relative_to(PROJECT_ROOT)
         ),
-        validation_predictions_path=str(
+        evaluation_predictions_path=str(
             PREDICTIONS_PATH.relative_to(PROJECT_ROOT)
         ),
-        validation_metrics_path=str(METRICS_PATH.relative_to(PROJECT_ROOT)),
+        evaluation_metrics_path=str(METRICS_PATH.relative_to(PROJECT_ROOT)),
     )
 
 

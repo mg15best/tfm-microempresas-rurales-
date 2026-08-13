@@ -34,10 +34,7 @@ REQUIRED_SOURCE_COLUMNS = {
     "data_version",
 }
 
-FreshnessStatus = Literal[
-    "operational_future",
-    "stale_target_not_future",
-]
+OperationalStatus = Literal["forecast_ready"]
 AsOfDate = str | date | datetime | pd.Timestamp
 
 
@@ -101,13 +98,14 @@ class InferenceResult:
     source_snapshot_id: str
     pipeline_run_id: str
     data_version: str
-    freshness_status: FreshnessStatus
+    latest_available_month_id: str
+    operational_status: OperationalStatus
     warnings: tuple[InferenceWarning, ...]
 
     @property
     def is_operational(self) -> bool:
-        """Indica si el resultado puede presentarse como forecast futuro."""
-        return self.freshness_status == "operational_future"
+        """Indica si existe un forecast valido para el proximo mes."""
+        return self.operational_status == "forecast_ready"
 
 
 def _display_path(path: Path) -> str:
@@ -311,7 +309,7 @@ def _prepare_dataset(dataframe: pd.DataFrame) -> pd.DataFrame:
 
 
 def _local_today() -> date:
-    """Obtiene la fecha local del sistema para evaluar freshness."""
+    """Obtiene la fecha local del sistema como forecast origin por defecto."""
     return date.today()
 
 
@@ -345,9 +343,9 @@ def predict_next_month(
     """Predice el siguiente mes con el valor exacto de 12 meses antes.
 
     Si no se proporciona ``dataframe``, carga el Gold declarado en la
-    configuracion. ``as_of_date`` solo evalua freshness: no modifica el
-    ultimo mes disponible ni el target derivado del dataset. Por defecto
-    se utiliza la fecha local real del sistema.
+    configuracion. El target se deriva del mes natural de ``as_of_date``;
+    el ultimo mes publicado se conserva solo como contexto. Por defecto se
+    utiliza la fecha local real del sistema como forecast origin.
     """
     effective_config: Mapping[str, Any]
     if config is None:
@@ -389,8 +387,9 @@ def predict_next_month(
         )
 
     source_months = source["date_month"].dt.to_period("M")
-    last_month = source_months.max()
-    target_month = last_month + forecast_horizon_months
+    latest_available_month = source_months.max()
+    as_of_month = _as_month(as_of_date)
+    target_month = as_of_month + forecast_horizon_months
     reference_month = target_month - 12
 
     global_reference_rows = source.loc[
@@ -446,22 +445,6 @@ def predict_next_month(
             )
         )
 
-    as_of_month = _as_month(as_of_date)
-    if target_month > as_of_month:
-        freshness_status: FreshnessStatus = "operational_future"
-    else:
-        freshness_status = "stale_target_not_future"
-        warnings.append(
-            InferenceWarning(
-                code="stale_snapshot_target_not_future",
-                message=(
-                    f"El target {target_month} no es futuro respecto a "
-                    f"{as_of_month}; no debe presentarse como forecast "
-                    "operacional."
-                ),
-            )
-        )
-
     return InferenceResult(
         territory_id=requested_territory_id,
         territory_name=str(territory_names[0]),
@@ -475,6 +458,7 @@ def predict_next_month(
         source_snapshot_id=str(reference_row["source_snapshot_id"]),
         pipeline_run_id=str(reference_row["pipeline_run_id"]),
         data_version=str(reference_row["data_version"]),
-        freshness_status=freshness_status,
+        latest_available_month_id=str(latest_available_month),
+        operational_status="forecast_ready",
         warnings=tuple(warnings),
     )

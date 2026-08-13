@@ -30,14 +30,25 @@ class TestDashboardData(unittest.TestCase):
 
     def setUp(self) -> None:
         self.config = {
+            "problem": {
+                "territory_level": "province",
+                "forecast_frequency": "monthly",
+                "forecast_horizon_months": 1,
+            },
+            "target": {
+                "source_column": "overnight_stays_total",
+            },
             "source_dataset": {
                 "path": "data/gold/gold_tourism_demand_monthly.parquet",
+                "expected_territory_level": "province",
             },
             "modeling_dataset": {
                 "path": "data/gold/gold_modeling_dataset_monthly.parquet",
+                "forecast_horizon": 1,
             },
             "baseline": {
                 "name": "seasonal_naive_lag_12",
+                "prediction_feature": "lag_12_overnight_stays",
             },
             "fallback": {
                 "if_no_candidate_beats_baseline": {
@@ -531,24 +542,57 @@ class TestDashboardData(unittest.TestCase):
             self.config,
         )
 
-        self.assertEqual(lineage.source_snapshot_id, "snapshot-001")
-        self.assertEqual(lineage.gold_pipeline_run_id, "gold-run-001")
-        self.assertEqual(lineage.validation_pipeline_run_id, "model-run-001")
+        self.assertEqual(
+            lineage.operational_source_snapshot_id,
+            "snapshot-001",
+        )
+        self.assertEqual(
+            lineage.operational_pipeline_run_id,
+            "gold-run-001",
+        )
+        self.assertEqual(
+            lineage.evaluation_source_snapshot_id,
+            "snapshot-001",
+        )
+        self.assertEqual(
+            lineage.evaluation_pipeline_run_id,
+            "model-run-001",
+        )
 
-    def test_incompatible_lineage_is_blocking(self) -> None:
+    def test_different_operational_and_evaluation_snapshots_are_valid(self) -> None:
         gold = self.gold.copy()
         gold["source_snapshot_id"] = "snapshot-002"
+
+        context = build_dashboard_context(
+            "ES-PROV-01",
+            gold=gold,
+            predictions=self.predictions,
+            official_metrics=self.official_metrics,
+            config=self.config,
+        )
+
+        self.assertEqual(
+            context.lineage.operational_source_snapshot_id,
+            "snapshot-002",
+        )
+        self.assertEqual(
+            context.lineage.evaluation_source_snapshot_id,
+            "snapshot-001",
+        )
+
+    def test_mixed_operational_gold_lineage_is_blocking(self) -> None:
+        gold = self.gold.copy()
+        gold.loc[gold.index[0], "source_snapshot_id"] = "snapshot-002"
         unique = prepare_baseline_validation_predictions(
             self.predictions,
             self.config,
         )
 
-        with self.assertRaises(LineageMismatchError):
-            validate_lineage_compatibility(
-                gold,
-                unique,
-                self.config,
-            )
+        with self.assertRaisesRegex(
+            LineageMismatchError,
+            "source_snapshot_id",
+        ):
+            validate_lineage_compatibility(gold, unique, self.config)
 
     def test_context_is_exportable_as_simple_tables(self) -> None:
         context = build_dashboard_context(
@@ -601,6 +645,17 @@ class TestDashboardData(unittest.TestCase):
                 config,
             )
 
+    def test_incompatible_forecast_horizon_is_blocking(self) -> None:
+        config = dict(self.config)
+        config["problem"] = dict(self.config["problem"])
+        config["problem"]["forecast_horizon_months"] = 2
+
+        with self.assertRaisesRegex(DashboardDataError, "horizonte uno"):
+            prepare_baseline_validation_predictions(
+                self.predictions,
+                config,
+            )
+
     def test_non_operational_baseline_and_selection_are_blocking(self) -> None:
         config = dict(self.config)
         config["baseline"] = {"name": "ridge"}
@@ -612,7 +667,7 @@ class TestDashboardData(unittest.TestCase):
         predictions = self.predictions.copy()
         predictions["baseline_id"] = "ridge"
 
-        with self.assertRaisesRegex(DashboardDataError, "seasonal_naive_lag_12"):
+        with self.assertRaises(DashboardDataError):
             prepare_baseline_validation_predictions(
                 predictions,
                 config,
@@ -682,7 +737,7 @@ class TestDashboardDataIntegration(unittest.TestCase):
         self.assertEqual(metrics["validation_rows"].unique().tolist(), [35])
         self.assertFalse(metrics["territory_id"].duplicated().any())
 
-    def test_real_gold_and_validation_lineage_are_compatible(self) -> None:
+    def test_current_historical_checkpoint_shares_snapshot(self) -> None:
         unique = prepare_baseline_validation_predictions(
             self.predictions,
             self.config,
@@ -695,7 +750,11 @@ class TestDashboardDataIntegration(unittest.TestCase):
         )
 
         self.assertEqual(
-            lineage.source_snapshot_id,
+            lineage.operational_source_snapshot_id,
+            self.gold["source_snapshot_id"].iloc[0],
+        )
+        self.assertEqual(
+            lineage.evaluation_source_snapshot_id,
             self.gold["source_snapshot_id"].iloc[0],
         )
 

@@ -12,7 +12,7 @@ dataset:
 
   expected_territory_count: 50
   minimum_start_month: "2005-01-01"
-  provisional_from: "2025-06-01"
+  provisional_window_months: 12
 
   allowed_missing_global_months:
     - "2020-04"
