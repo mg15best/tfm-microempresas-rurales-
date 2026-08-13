@@ -76,6 +76,7 @@ HISTORY_COLUMNS = [
     "month_id",
     "date_month",
     "overnight_stays_total",
+    "covid_period",
     "data_status",
     "is_provisional",
     "coverage_quality",

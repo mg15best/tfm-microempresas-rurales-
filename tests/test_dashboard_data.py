@@ -88,6 +88,7 @@ class TestDashboardData(unittest.TestCase):
                     ["2023-03-01", "2023-01-01", "2023-04-01", "2023-01-01"]
                 ),
                 "overnight_stays_total": [130, 100, 140, 0],
+                "covid_period": [False, False, False, False],
                 "data_status": [
                     "final_or_not_marked_provisional",
                     "final_or_not_marked_provisional",
@@ -191,6 +192,7 @@ class TestDashboardData(unittest.TestCase):
                 "month_id",
                 "date_month",
                 "overnight_stays_total",
+                "covid_period",
                 "data_status",
                 "is_provisional",
                 "coverage_quality",

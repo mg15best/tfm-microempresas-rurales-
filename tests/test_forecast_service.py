@@ -84,6 +84,7 @@ class TestForecastService(unittest.TestCase):
                 "month_id": [row[2] for row in rows],
                 "date_month": pd.to_datetime([row[2] for row in rows]),
                 "overnight_stays_total": [row[3] for row in rows],
+                "covid_period": False,
                 "data_status": [
                     "provisional" if row[4]
                     else "final_or_not_marked_provisional"
