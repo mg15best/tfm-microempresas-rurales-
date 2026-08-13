@@ -737,17 +737,31 @@ class TestDashboardDataIntegration(unittest.TestCase):
         self.assertEqual(metrics["validation_rows"].unique().tolist(), [35])
         self.assertFalse(metrics["territory_id"].duplicated().any())
 
-    def test_current_historical_checkpoint_shares_snapshot(self) -> None:
+    def test_newer_operational_gold_keeps_evaluation_provenance(self) -> None:
         unique = prepare_baseline_validation_predictions(
             self.predictions,
             self.config,
         )
-
-        lineage = validate_lineage_compatibility(
-            self.gold,
-            unique,
-            self.config,
+        territory_id = str(sorted(self.gold["territory_id"].unique())[0])
+        context = build_dashboard_context(
+            territory_id,
+            gold=self.gold,
+            predictions=self.predictions,
+            official_metrics=self.official,
+            config=self.config,
         )
+        lineage = context.lineage
+
+        for dataframe in (self.gold, unique):
+            for column in (
+                "source_snapshot_id",
+                "pipeline_run_id",
+                "data_version",
+            ):
+                values = dataframe[column].astype(str)
+                self.assertFalse(dataframe[column].isna().any())
+                self.assertFalse(values.str.strip().eq("").any())
+                self.assertEqual(values.nunique(), 1)
 
         self.assertEqual(
             lineage.operational_source_snapshot_id,
@@ -755,8 +769,55 @@ class TestDashboardDataIntegration(unittest.TestCase):
         )
         self.assertEqual(
             lineage.evaluation_source_snapshot_id,
-            self.gold["source_snapshot_id"].iloc[0],
+            unique["source_snapshot_id"].iloc[0],
         )
+        self.assertTrue(lineage.operational_source_snapshot_id.strip())
+        self.assertTrue(lineage.evaluation_source_snapshot_id.strip())
+        self.assertNotEqual(
+            lineage.operational_source_snapshot_id,
+            lineage.evaluation_source_snapshot_id,
+        )
+        self.assertEqual(
+            lineage.operational_pipeline_run_id,
+            self.gold["pipeline_run_id"].iloc[0],
+        )
+        self.assertEqual(
+            lineage.operational_data_version,
+            self.gold["data_version"].iloc[0],
+        )
+        self.assertEqual(
+            lineage.evaluation_pipeline_run_id,
+            unique["pipeline_run_id"].iloc[0],
+        )
+        self.assertEqual(
+            lineage.evaluation_data_version,
+            unique["data_version"].iloc[0],
+        )
+
+        gold_name = self.gold.loc[
+            self.gold["territory_id"].astype(str).eq(territory_id),
+            "territory_name",
+        ].iloc[0]
+        evaluation_name = unique.loc[
+            unique["territory_id"].astype(str).eq(territory_id),
+            "territory_name",
+        ].iloc[0]
+        self.assertEqual(context.territory_name, gold_name)
+        self.assertEqual(context.territory_name, evaluation_name)
+
+        baseline_id = self.config["baseline"]["name"]
+        selected_solution = self.config["fallback"][
+            "if_no_candidate_beats_baseline"
+        ]["selected_solution"]
+        self.assertEqual(baseline_id, "seasonal_naive_lag_12")
+        self.assertEqual(selected_solution, baseline_id)
+
+        calculated = reconcile_official_pooled_metrics(
+            unique,
+            self.official,
+            self.config,
+        )
+        self.assertEqual(calculated["rows"], 1_750)
 
 
 if __name__ == "__main__":

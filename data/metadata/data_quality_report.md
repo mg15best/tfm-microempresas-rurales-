@@ -3,13 +3,13 @@
 ## 1. Resumen de ejecución
 
 - **Dataset:** `data/gold/gold_tourism_demand_monthly.parquet`
-- **SHA-256 del dataset:** `9d3309751cb1c8b54c0324ea56592bed44853f1f948fcce733d424291821f127`
-- **Fecha de validación UTC:** `2026-07-28T12:18:23.060922+00:00`
+- **SHA-256 del dataset:** `9ecf859b0db0932566dbbb4e03255020fca2960239e4160189e743d6b42e96d5`
+- **Fecha de validación UTC:** `2026-08-13T11:06:08.039816+00:00`
 - **Estado general:** **PASS**
-- **Filas:** `12,691`
+- **Filas:** `12,741`
 - **Columnas:** `64`
 - **Territorios:** `50`
-- **Periodo:** `2005-01` a `2026-05`
+- **Periodo:** `2005-01` a `2026-06`
 - **Controles superados:** `170`
 - **Advertencias:** `1`
 - **Controles fallidos:** `0`
@@ -130,7 +130,7 @@
 | schema_not_null::data_version | PASS | Valores nulos: 0 |
 | schema_dtype::created_at | PASS | Esperado: datetime64[ns, UTC]; encontrado: datetime64[ns, UTC] |
 | schema_not_null::created_at | PASS | Valores nulos: 0 |
-| dataset_not_empty | PASS | Filas encontradas: 12,691 |
+| dataset_not_empty | PASS | Filas encontradas: 12,741 |
 | required_columns | PASS | Todas las columnas obligatorias están presentes. |
 | key_not_null | PASS | Filas con claves nulas: 0 |
 | key_uniqueness | PASS | Claves duplicadas: 0 |
@@ -166,7 +166,7 @@
 | total_consistency::travellers_total | PASS | Filas completas con total incoherente: 0 |
 | total_consistency::overnight_stays_total | PASS | Filas completas con total incoherente: 0 |
 | average_stay_consistency | PASS | Filas con estancia media incoherente: 0 |
-| provisional_period | PASS | Filas con clasificación provisional incoherente: 0 |
+| provisional_period | PASS | Filas con clasificación provisional incoherente: 0. Vintage hasta 2026-06; ventana móvil de 12 meses desde 2025-07. |
 | data_status_consistency | PASS | Filas con data_status incoherente: 0 |
 | download_log_schema | PASS | download_log.csv contiene las columnas necesarias para validar la trazabilidad. |
 | snapshot_registered::demand_snapshot_id | PASS | Todos los hashes de la capa gold están registrados en download_log.csv. |
@@ -201,10 +201,10 @@
 | places_estimated | 0 | 0.00 % |
 | occupancy_rate_pct | 0 | 0.00 % |
 | weekend_occupancy_rate_pct | 0 | 0.00 % |
-| room_occupancy_rate_pct | 1,191 | 9.38 % |
+| room_occupancy_rate_pct | 1,191 | 9.35 % |
 | staff_employed | 0 | 0.00 % |
-| overnight_stays_yoy_change_pct | 768 | 6.05 % |
-| tourism_pressure_index | 768 | 6.05 % |
+| overnight_stays_yoy_change_pct | 768 | 6.03 % |
+| tourism_pressure_index | 768 | 6.03 % |
 
 ## 4. Interpretación
 

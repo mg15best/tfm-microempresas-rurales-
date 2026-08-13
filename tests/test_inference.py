@@ -376,7 +376,11 @@ class TestInferenceIntegration(unittest.TestCase):
 
         self.assertEqual(result.target_month_id, "2026-09")
         self.assertEqual(result.reference_month_id, "2025-09")
-        self.assertEqual(result.latest_available_month_id, "2026-05")
+        self.assertEqual(result.latest_available_month_id, "2026-06")
+        self.assertNotEqual(
+            pd.Period(result.target_month_id, freq="M"),
+            pd.Period(result.latest_available_month_id, freq="M") + 1,
+        )
         self.assertEqual(
             result.predicted_overnight_stays_total,
             float(reference["overnight_stays_total"]),

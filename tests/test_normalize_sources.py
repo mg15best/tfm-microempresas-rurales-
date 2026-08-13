@@ -84,12 +84,40 @@ class TestProvisionalityByVintage(unittest.TestCase):
         months = pd.to_datetime(gold["date_month"]).dt.to_period("M")
         latest_month = months.max()
         provisional_from = latest_month - (PROVISIONAL_WINDOW_MONTHS - 1)
+        provisional_mask = gold["is_provisional"].astype(bool)
+        provisional_months = months.loc[provisional_mask].drop_duplicates()
+        expected_months = pd.period_range(
+            provisional_from,
+            latest_month,
+            freq="M",
+        )
 
-        self.assertEqual(str(latest_month), "2026-05")
+        self.assertEqual(str(latest_month), "2026-06")
         self.assertTrue(
-            gold["is_provisional"].astype(bool).eq(
+            provisional_mask.eq(
                 months.ge(provisional_from)
             ).all()
+        )
+        self.assertEqual(len(provisional_months), PROVISIONAL_WINDOW_MONTHS)
+        self.assertEqual(
+            provisional_months.sort_values().tolist(),
+            expected_months.tolist(),
+        )
+        self.assertEqual(
+            gold.loc[provisional_mask].groupby("month_id")[
+                "territory_id"
+            ].nunique().tolist(),
+            [50] * PROVISIONAL_WINDOW_MONTHS,
+        )
+        self.assertFalse(
+            gold.loc[months.eq(pd.Period("2025-06")), "is_provisional"]
+            .astype(bool)
+            .any()
+        )
+        self.assertTrue(
+            gold.loc[months.eq(pd.Period("2026-06")), "is_provisional"]
+            .astype(bool)
+            .all()
         )
 
 
