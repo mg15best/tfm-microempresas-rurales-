@@ -1,0 +1,63 @@
+methodology:
+  id: "point_in_time_v2"
+  version: "2.0.0-b1"
+  evaluation_design: "rolling_validation"
+  information_reconstruction: "availability_correct_latest_vintage"
+  status: "infrastructure_validation"
+
+source:
+  path: "data/gold/gold_tourism_demand_monthly.parquet"
+  granularity:
+    - "territory_id"
+    - "month_id"
+  target_column: "overnight_stays_total"
+  target_month_column: "month_id"
+  territory_level: "province"
+
+cutoff_policy:
+  id: "conservative_target_lag_3_v1"
+  business_origin_lag_months: 1
+  latest_available_lag_months: 3
+  max_training_target_lag_months: 3
+
+folds:
+  - id: "validation_1"
+    start: "2021-06"
+    end: "2022-05"
+    expected_evaluable_rows: 550
+    interpretation: "stress_period"
+  - id: "validation_2"
+    start: "2022-06"
+    end: "2023-05"
+    expected_evaluable_rows: 600
+    interpretation: "rolling_validation"
+  - id: "validation_3"
+    start: "2023-06"
+    end: "2024-05"
+    expected_evaluable_rows: 600
+    interpretation: "rolling_validation"
+
+baseline:
+  id: "seasonal_naive_lag_12"
+  role: "provisional_validation_champion"
+  target_lag_months: 12
+  missing_reference_reason: "missing_seasonal_reference"
+
+metrics:
+  primary: "MAE"
+  secondary:
+    - "RMSE"
+    - "WAPE_pct"
+    - "bias"
+    - "skill_mae_pct"
+  bias_definition: "prediction_minus_actual"
+  skill_mae_pct_definition: >-
+    100 * (MAE_baseline - MAE_candidate) / MAE_baseline
+
+provenance:
+  config_version: "modeling_v2_config_b1_v1"
+  code_contract_version: "point_in_time_v2_b1_v1"
+  frozen_comparison_path: >-
+    data/model_outputs/model_selection_validation_predictions.parquet
+  writes_evaluation_artifacts: false
+

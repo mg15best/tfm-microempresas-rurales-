@@ -1,0 +1,51 @@
+specification:
+  id: "feature_availability_v2"
+  version: "1.0.0-b1"
+  methodology_id: "point_in_time_v2"
+
+target:
+  field: "overnight_stays_total"
+  month_field: "month_id"
+  territory_field: "territory_id"
+  frequency: "monthly"
+
+cutoff_policy:
+  id: "conservative_target_lag_3_v1"
+  definition: "data/metadata/modeling_v2_config.yml"
+
+known_ahead_fields:
+  - "territory_id"
+  - "year"
+  - "month"
+  - "quarter"
+  - "is_summer"
+  - "is_christmas_period"
+
+laggable_fields:
+  overnight_stays_total:
+    publication_controlled: true
+    availability_policy_id: "conservative_target_lag_3_v1"
+    b1_permitted_lags_months:
+      - 12
+
+prohibited_contemporaneous_fields:
+  - "travellers_total"
+  - "overnight_stays_total"
+  - "occupancy_rate_pct"
+  - "weekend_occupancy_rate_pct"
+  - "room_occupancy_rate_pct"
+  - "average_stay"
+  - "staff_employed"
+  - "seasonality_index"
+  - "tourism_pressure_index"
+
+training_labels:
+  maximum_known_target: "latest_available_month"
+  reject_targets_after_cutoff: true
+
+vintage_limitation:
+  id: "availability_correct_latest_vintage"
+  publication_availability_corrected: true
+  exact_historical_vintages_reconstructed: false
+  history_used: "currently_revised_history"
+  classification: "vintage_limitation"
