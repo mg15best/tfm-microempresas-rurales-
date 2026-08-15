@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Mapping
 
 import numpy as np
@@ -32,6 +33,10 @@ try:
         build_historical_baseline_score_bank,
         first_interval_eligible_target,
     )
+    from src.models.ets_v2 import (
+        build_current_ets_forecasts,
+        build_ets_predictions,
+    )
 except ModuleNotFoundError:
     from modeling_v2_common import (
         PROJECT_ROOT,
@@ -50,6 +55,7 @@ except ModuleNotFoundError:
         build_historical_baseline_score_bank,
         first_interval_eligible_target,
     )
+    from ets_v2 import build_current_ets_forecasts, build_ets_predictions
 
 
 DEFAULT_GOLD_PATH = (
@@ -1342,4 +1348,232 @@ def reproduce_prediction_intervals_in_memory(
             ),
         ),
         "current_intervals": current,
+    }
+
+
+def screen_ets_candidate(
+    pooled_metrics: Mapping[str, Any],
+    fold_metrics: pd.DataFrame,
+    territory_metrics: pd.DataFrame,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Aplica a ETS exactamente los seis checks congelados en B2."""
+
+    resolved_config = config or load_modeling_v2_config()
+    screening = resolved_config["screening"]
+    if (
+        screening.get("bias_guardrail")
+        != "absolute_candidate_bias_not_greater_than_baseline"
+    ):
+        raise ValueError("Guardrail de bias V2 no soportado.")
+    fold_skills = pd.to_numeric(fold_metrics["mae_skill_pct"])
+    territory_skills = pd.to_numeric(territory_metrics["mae_skill_pct"])
+    if len(fold_skills) != 3 or territory_skills.empty:
+        raise ValueError("Screening ETS sin folds/provincias completos.")
+    fold_wins = int(fold_skills.gt(0).sum())
+    territory_wins = int(territory_skills.gt(0).sum())
+    territory_win_fraction = territory_wins / len(territory_skills)
+    checks = {
+        "A_pooled_mae_skill_positive": (
+            float(pooled_metrics["mae_skill_pct"]) > 0
+        ),
+        "B_at_least_two_folds_positive": (
+            fold_wins >= int(screening["minimum_positive_fold_count"])
+        ),
+        "C_median_fold_skill_positive": float(fold_skills.median()) > 0,
+        "D_more_than_half_provinces_positive": (
+            territory_win_fraction
+            > float(screening["province_win_fraction_strictly_greater_than"])
+        ),
+        "E_median_territorial_skill_positive": (
+            float(territory_skills.median()) > 0
+        ),
+        "F_absolute_bias_not_worse": (
+            abs(float(pooled_metrics["candidate_bias"]))
+            <= abs(float(pooled_metrics["baseline_bias"]))
+        ),
+    }
+    if all(checks.values()):
+        conclusion = "ETS CANDIDATE PASSES SCREENING"
+    elif checks["A_pooled_mae_skill_positive"]:
+        conclusion = "ETS CANDIDATE UNSTABLE"
+    else:
+        conclusion = "ETS CANDIDATE FAILS SCREENING"
+    return {
+        **checks,
+        "fold_wins": fold_wins,
+        "territory_wins": territory_wins,
+        "territory_win_fraction": territory_win_fraction,
+        "median_fold_skill_pct": float(fold_skills.median()),
+        "median_territorial_skill_pct": float(territory_skills.median()),
+        "conclusion": conclusion,
+    }
+
+
+def calculate_ets_fit_summary(
+    candidate_predictions: pd.DataFrame,
+) -> dict[str, Any]:
+    """Resume intentos, fallos, warnings, clipping y coste observado."""
+
+    attempted = candidate_predictions["fit_attempted"].fillna(False)
+    available = candidate_predictions["candidate_available"].fillna(False)
+    failed = attempted & ~available
+    unavailable = ~available
+    reasons = (
+        candidate_predictions.loc[unavailable, "fallback_reason"]
+        .value_counts()
+        .sort_index()
+        .to_dict()
+    )
+    fit_times = pd.to_numeric(
+        candidate_predictions.loc[attempted, "fit_seconds"], errors="raise"
+    )
+    return {
+        "rows": int(len(candidate_predictions)),
+        "fits_attempted": int(attempted.sum()),
+        "fits_successful": int(available.sum()),
+        "fits_failed": int(failed.sum()),
+        "unavailable_before_fit": int((~attempted & ~available).sum()),
+        "failure_reason_counts": reasons,
+        "fits_with_warnings": int(
+            candidate_predictions["fit_warning_count"].gt(0).sum()
+        ),
+        "warning_count": int(
+            candidate_predictions["fit_warning_count"].sum()
+        ),
+        "clipped_negative_forecasts": int(
+            candidate_predictions["clipping_applied"].sum()
+        ),
+        "imputed_training_rows": int(
+            candidate_predictions["imputed_months_n"].sum()
+        ),
+        "total_fit_seconds": float(fit_times.sum()),
+        "median_fit_seconds": (
+            float(fit_times.median()) if not fit_times.empty else np.nan
+        ),
+    }
+
+
+def calculate_ets_forecast_distribution(
+    candidate_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Resume forecasts disponibles por fold sin introducir routing."""
+
+    rows: list[dict[str, Any]] = []
+    available = candidate_predictions.loc[
+        candidate_predictions["candidate_available"]
+    ]
+    for fold_id, group in available.groupby("fold_id", sort=True):
+        values = pd.to_numeric(group["candidate_prediction"], errors="raise")
+        rows.append(
+            {
+                "fold_id": str(fold_id),
+                "n": int(len(values)),
+                "min": float(values.min()),
+                "P05": float(values.quantile(0.05)),
+                "median": float(values.median()),
+                "P95": float(values.quantile(0.95)),
+                "max": float(values.max()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_current_ets_illustration(
+    gold_history: pd.DataFrame,
+    *,
+    target_month_id: str,
+    config: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Genera forecasts ETS read-only para un target mensual futuro."""
+
+    resolved_config = config or load_modeling_v2_config()
+    policy = cutoff_policy_from_config(resolved_config)
+    origin = resolve_information_cutoff(target_month_id, policy)
+    return build_current_ets_forecasts(
+        gold_history,
+        origin,
+        resolved_config["ets_candidate"],
+        baseline_lag_months=int(
+            resolved_config["baseline"]["target_lag_months"]
+        ),
+    )
+
+
+def reproduce_ets_in_memory(
+    gold_history: pd.DataFrame | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Ejecuta el ultimo screening predictivo V2 sin persistir artefactos."""
+
+    resolved_config = config or load_modeling_v2_config()
+    if resolved_config["candidate"].get("screening_status") != (
+        "rejected_screening"
+    ):
+        raise ValueError("B4 requiere preservar el rechazo B2.")
+    if resolved_config["prediction_interval"].get("method_id") != (
+        "prequential_scaled_absolute_residual_interval_v1"
+    ):
+        raise ValueError("B4 requiere preservar el metodo B3.")
+    source_path = Path(str(resolved_config["source"]["path"]))
+    if not source_path.is_absolute():
+        source_path = PROJECT_ROOT / source_path
+    gold = (
+        gold_history
+        if gold_history is not None
+        else load_gold_history(source_path)
+    )
+    baseline_result = reproduce_baseline_in_memory(gold, resolved_config)
+    baseline = baseline_result["comparable_predictions"]
+    started = perf_counter()
+    candidate = build_ets_predictions(
+        baseline, gold, resolved_config["ets_candidate"]
+    )
+    evaluation_wall_seconds = perf_counter() - started
+    paired_invariant = assert_candidate_rows_are_paired(baseline, candidate)
+    pure = candidate.loc[candidate["candidate_available"]].copy()
+    pure_metrics = calculate_paired_metrics(
+        pure, candidate_prediction_column="candidate_prediction"
+    )
+    operational_metrics = calculate_paired_metrics(
+        candidate, candidate_prediction_column="operational_prediction"
+    )
+    fold_metrics = calculate_candidate_fold_metrics(candidate, resolved_config)
+    territory_metrics = calculate_candidate_territory_metrics(candidate)
+    month_metrics = calculate_candidate_month_metrics(candidate)
+    origin_metrics = calculate_candidate_origin_metrics(candidate)
+    post_stress = candidate.loc[
+        candidate["fold_id"].isin(["validation_2", "validation_3"])
+    ]
+    post_stress_metrics = calculate_paired_metrics(
+        post_stress, candidate_prediction_column="operational_prediction"
+    )
+    screening = screen_ets_candidate(
+        operational_metrics,
+        fold_metrics,
+        territory_metrics,
+        resolved_config,
+    )
+    current = build_current_ets_illustration(
+        gold, target_month_id="2026-09", config=resolved_config
+    )
+    return {
+        "baseline": baseline_result,
+        "candidate_predictions": candidate,
+        "pure_candidate_predictions": pure,
+        "paired_invariant": paired_invariant,
+        "pure_metrics": pure_metrics,
+        "operational_metrics": operational_metrics,
+        "fold_metrics": fold_metrics,
+        "territory_metrics": territory_metrics,
+        "month_metrics": month_metrics,
+        "origin_metrics": origin_metrics,
+        "post_stress_metrics": post_stress_metrics,
+        "screening": screening,
+        "fit_summary": calculate_ets_fit_summary(candidate),
+        "forecast_distribution_by_fold": (
+            calculate_ets_forecast_distribution(candidate)
+        ),
+        "evaluation_wall_seconds": float(evaluation_wall_seconds),
+        "current_forecasts": current,
     }
