@@ -26,6 +26,12 @@ try:
         build_current_seasonal_trend_forecasts,
         build_seasonal_trend_predictions,
     )
+    from src.models.prediction_intervals_v2 import (
+        apply_prequential_intervals,
+        build_current_baseline_intervals,
+        build_historical_baseline_score_bank,
+        first_interval_eligible_target,
+    )
 except ModuleNotFoundError:
     from modeling_v2_common import (
         PROJECT_ROOT,
@@ -37,6 +43,12 @@ except ModuleNotFoundError:
     from seasonal_trend_v2 import (
         build_current_seasonal_trend_forecasts,
         build_seasonal_trend_predictions,
+    )
+    from prediction_intervals_v2 import (
+        apply_prequential_intervals,
+        build_current_baseline_intervals,
+        build_historical_baseline_score_bank,
+        first_interval_eligible_target,
     )
 
 
@@ -1051,4 +1063,283 @@ def reproduce_seasonal_trend_in_memory(
         ),
         "post_stress_metrics": post_stress_metrics,
         "screening": screening,
+    }
+
+
+def assert_interval_points_unchanged(
+    baseline_predictions: pd.DataFrame,
+    interval_predictions: pd.DataFrame,
+) -> dict[str, int]:
+    """Protege keys, actuals y point forecasts baseline durante B3."""
+
+    keys = ["fold_id", "territory_id", "target_month_id"]
+    baseline = baseline_predictions[
+        [*keys, "actual", "prediction"]
+    ].rename(
+        columns={
+            "actual": "actual_expected",
+            "prediction": "point_expected",
+        }
+    )
+    intervals = interval_predictions[
+        [*keys, "actual", "point_prediction"]
+    ]
+    if baseline.duplicated(keys).any() or intervals.duplicated(keys).any():
+        raise AssertionError("B3 contiene keys duplicadas.")
+    merged = baseline.merge(intervals, on=keys, how="outer", indicator=True)
+    missing = int(merged["_merge"].eq("left_only").sum())
+    extra = int(merged["_merge"].eq("right_only").sum())
+    common = merged.loc[merged["_merge"].eq("both")]
+    point_mismatches = int(
+        (~np.isclose(
+            common["point_expected"], common["point_prediction"],
+            rtol=0, atol=1e-9, equal_nan=True,
+        )).sum()
+    )
+    actual_mismatches = int(
+        (~np.isclose(
+            common["actual_expected"], common["actual"],
+            rtol=0, atol=1e-9, equal_nan=True,
+        )).sum()
+    )
+    if missing or extra or point_mismatches or actual_mismatches:
+        raise AssertionError(
+            "B3 altero keys, actuals o point predictions baseline."
+        )
+    return {
+        "baseline_rows": int(len(baseline)),
+        "interval_rows": int(len(intervals)),
+        "common_rows": int(len(common)),
+        "missing_keys": missing,
+        "extra_keys": extra,
+        "point_mismatches": point_mismatches,
+        "actual_mismatches": actual_mismatches,
+    }
+
+
+def calculate_interval_metrics(
+    interval_predictions: pd.DataFrame,
+) -> dict[str, float | int]:
+    """Calcula coverage, anchura y score sobre intervalos disponibles."""
+
+    available = interval_predictions.loc[
+        interval_predictions["interval_available"].fillna(False)
+    ].copy()
+    unavailable_n = int(len(interval_predictions) - len(available))
+    if available.empty:
+        return {
+            "rows": int(len(interval_predictions)),
+            "interval_available_rows": 0,
+            "interval_unavailable_rows": unavailable_n,
+            "nominal_coverage_pct": np.nan,
+            "empirical_coverage_pct": np.nan,
+            "coverage_gap_pct_points": np.nan,
+            "mean_width": np.nan,
+            "median_width": np.nan,
+            "mean_normalized_width": np.nan,
+            "median_normalized_width": np.nan,
+            "P25_normalized_width": np.nan,
+            "P75_normalized_width": np.nan,
+            "P95_normalized_width": np.nan,
+            "mean_interval_score": np.nan,
+            "misses_below": 0,
+            "misses_above": 0,
+        }
+    nominal = float(available["nominal_level"].iloc[0])
+    if not np.allclose(available["nominal_level"], nominal):
+        raise ValueError("Niveles nominales mezclados.")
+    empirical = float(available["covered"].mean())
+    widths = pd.to_numeric(available["width"], errors="raise")
+    normalized = pd.to_numeric(
+        available["normalized_width"], errors="raise"
+    )
+    scores = pd.to_numeric(available["interval_score"], errors="raise")
+    return {
+        "rows": int(len(interval_predictions)),
+        "interval_available_rows": int(len(available)),
+        "interval_unavailable_rows": unavailable_n,
+        "nominal_coverage_pct": nominal * 100,
+        "empirical_coverage_pct": empirical * 100,
+        "coverage_gap_pct_points": (empirical - nominal) * 100,
+        "mean_width": float(widths.mean()),
+        "median_width": float(widths.median()),
+        "mean_normalized_width": float(normalized.mean()),
+        "median_normalized_width": float(normalized.median()),
+        "P25_normalized_width": float(normalized.quantile(0.25)),
+        "P75_normalized_width": float(normalized.quantile(0.75)),
+        "P95_normalized_width": float(normalized.quantile(0.95)),
+        "mean_interval_score": float(scores.mean()),
+        "misses_below": int(available["miss_below"].sum()),
+        "misses_above": int(available["miss_above"].sum()),
+    }
+
+
+def _group_interval_metrics(
+    interval_predictions: pd.DataFrame,
+    group_columns: list[str],
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    group_arg: str | list[str] = (
+        group_columns[0] if len(group_columns) == 1 else group_columns
+    )
+    for group_key, group in interval_predictions.groupby(
+        group_arg, sort=True, observed=True
+    ):
+        values = (group_key,) if len(group_columns) == 1 else tuple(group_key)
+        rows.append(
+            {
+                **dict(zip(group_columns, values)),
+                **calculate_interval_metrics(group),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def calculate_interval_fold_metrics(
+    interval_predictions: pd.DataFrame,
+    config: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Calcula diagnosticos de intervalo por rolling validation fold."""
+
+    resolved_config = config or load_modeling_v2_config()
+    metrics = _group_interval_metrics(interval_predictions, ["fold_id"])
+    periods = {
+        str(fold["id"]): f"{fold['start']}/{fold['end']}"
+        for fold in resolved_config["folds"]
+    }
+    metrics.insert(1, "period", metrics["fold_id"].map(periods))
+    return metrics
+
+
+def calculate_interval_territory_metrics(
+    interval_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calcula cobertura territorial solo como diagnostico."""
+
+    metrics = _group_interval_metrics(interval_predictions, ["territory_id"])
+    names = (
+        interval_predictions[["territory_id", "territory_name"]]
+        .drop_duplicates()
+        .set_index("territory_id")["territory_name"]
+        .astype(str)
+        .to_dict()
+    )
+    metrics.insert(
+        1, "territory_name", metrics["territory_id"].map(names)
+    )
+    return metrics
+
+
+def calculate_interval_month_metrics(
+    interval_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calcula cobertura por mes calendario sin calibraciones separadas."""
+
+    data = interval_predictions.copy()
+    data["month_number"] = pd.PeriodIndex(
+        data["target_month_id"], freq="M"
+    ).month
+    return _group_interval_metrics(data, ["month_number"])
+
+
+def calculate_interval_origin_metrics(
+    interval_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calcula evolucion temporal de cobertura y anchura por origin."""
+
+    metrics = _group_interval_metrics(
+        interval_predictions, ["fold_id", "target_month_id"]
+    )
+    return metrics.rename(columns={"rows": "n_territories"}).sort_values(
+        "target_month_id", ignore_index=True
+    )
+
+
+def reproduce_prediction_intervals_in_memory(
+    gold_history: pd.DataFrame | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Ejecuta B3 en memoria sin persistir predicciones ni metricas."""
+
+    resolved_config = config or load_modeling_v2_config()
+    interval_config = resolved_config["prediction_interval"]
+    if str(resolved_config["candidate"].get("screening_status")) != (
+        "rejected_screening"
+    ):
+        raise ValueError("B3 requiere conservar el rechazo screening de B2.")
+    source_path = Path(str(resolved_config["source"]["path"]))
+    if not source_path.is_absolute():
+        source_path = PROJECT_ROOT / source_path
+    gold = (
+        gold_history
+        if gold_history is not None
+        else load_gold_history(source_path)
+    )
+    baseline_result = reproduce_baseline_in_memory(gold, resolved_config)
+    baseline = baseline_result["comparable_predictions"]
+    score_bank = build_historical_baseline_score_bank(
+        gold,
+        baseline_id=str(resolved_config["baseline"]["id"]),
+        seasonal_reference_lag_months=int(
+            resolved_config["baseline"]["target_lag_months"]
+        ),
+    )
+    intervals = apply_prequential_intervals(
+        baseline, score_bank, interval_config
+    )
+    point_invariant = assert_interval_points_unchanged(baseline, intervals)
+    fold_metrics = calculate_interval_fold_metrics(intervals, resolved_config)
+    territory_metrics = calculate_interval_territory_metrics(intervals)
+    month_metrics = calculate_interval_month_metrics(intervals)
+    origin_metrics = calculate_interval_origin_metrics(intervals)
+    post_stress = intervals.loc[
+        intervals["fold_id"].isin(["validation_2", "validation_3"])
+    ]
+    origins = (
+        intervals[
+            [
+                "target_month_id",
+                "calibration_scores_n",
+                "calibration_origins_n",
+                "calibration_max_target_month_id",
+            ]
+        ]
+        .drop_duplicates("target_month_id")
+        .sort_values("target_month_id")
+    )
+    policy = cutoff_policy_from_config(resolved_config)
+    current_origin = resolve_information_cutoff("2026-09", policy)
+    current = build_current_baseline_intervals(
+        gold,
+        origin=current_origin,
+        score_bank=score_bank,
+        interval_config=interval_config,
+        seasonal_reference_lag_months=int(
+            resolved_config["baseline"]["target_lag_months"]
+        ),
+    )
+    return {
+        "baseline": baseline_result,
+        "score_bank": score_bank,
+        "interval_predictions": intervals,
+        "point_invariant": point_invariant,
+        "pooled_metrics": calculate_interval_metrics(intervals),
+        "fold_metrics": fold_metrics,
+        "territory_metrics": territory_metrics,
+        "month_metrics": month_metrics,
+        "origin_metrics": origin_metrics,
+        "post_stress_metrics": calculate_interval_metrics(post_stress),
+        "calibration_by_origin": origins,
+        "first_calibration_target": str(score_bank["target_month_id"].min()),
+        "first_interval_eligible_target": first_interval_eligible_target(
+            score_bank,
+            minimum_calibration_origins=int(
+                interval_config["minimum_calibration_origins"]
+            ),
+            availability_lag_months=int(
+                resolved_config["cutoff_policy"]
+                ["latest_available_lag_months"]
+            ),
+        ),
+        "current_intervals": current,
     }
