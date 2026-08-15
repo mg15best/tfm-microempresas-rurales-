@@ -1,6 +1,6 @@
 specification:
   id: "feature_availability_v2"
-  version: "1.0.0-b1"
+  version: "1.0.0-b2"
   methodology_id: "point_in_time_v2"
 
 target:
@@ -27,6 +27,27 @@ laggable_fields:
     availability_policy_id: "conservative_target_lag_3_v1"
     b1_permitted_lags_months:
       - 12
+
+candidate_dependencies:
+  candidate_id: "seasonal_trend_adjusted_3m_yoy_v1"
+  exact_calendar_joins: true
+  seasonal_reference:
+    source_field: "overnight_stays_total"
+    relative_to_target_months: -12
+  recent_published_window:
+    source_field: "overnight_stays_total"
+    relative_to_cutoff_months:
+      - -2
+      - -1
+      - 0
+  prior_year_recent_window:
+    source_field: "overnight_stays_total"
+    relative_to_cutoff_months:
+      - -14
+      - -13
+      - -12
+  latest_window_month_must_equal: "latest_available_month"
+  raw_ratio_without_clipping: true
 
 prohibited_contemporaneous_fields:
   - "travellers_total"

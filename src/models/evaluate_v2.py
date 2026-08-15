@@ -20,6 +20,11 @@ try:
         build_backtest_origins,
         cutoff_policy_from_config,
         load_modeling_v2_config,
+        resolve_information_cutoff,
+    )
+    from src.models.seasonal_trend_v2 import (
+        build_current_seasonal_trend_forecasts,
+        build_seasonal_trend_predictions,
     )
 except ModuleNotFoundError:
     from modeling_v2_common import (
@@ -27,6 +32,11 @@ except ModuleNotFoundError:
         build_backtest_origins,
         cutoff_policy_from_config,
         load_modeling_v2_config,
+        resolve_information_cutoff,
+    )
+    from seasonal_trend_v2 import (
+        build_current_seasonal_trend_forecasts,
+        build_seasonal_trend_predictions,
     )
 
 
@@ -586,4 +596,459 @@ def reproduce_baseline_in_memory(
         "origin_metrics": calculate_origin_metrics(predictions),
         "first_fold_stress": first_fold_stress_evidence(predictions),
         "v1_comparison": asdict(compare_with_frozen_v1(predictions)),
+    }
+
+
+def calculate_skill_wape_pct(
+    baseline_wape: float,
+    candidate_wape: float,
+) -> float:
+    """Calcula skill WAPE con el mismo signo positivo de mejora."""
+
+    baseline = float(baseline_wape)
+    candidate = float(candidate_wape)
+    if baseline < 0 or candidate < 0:
+        raise ValueError("WAPE no puede ser negativo.")
+    if baseline == 0:
+        return 0.0 if candidate == 0 else np.nan
+    return float(100 * (baseline - candidate) / baseline)
+
+
+def _metrics_for_prediction(
+    dataframe: pd.DataFrame,
+    prediction_column: str,
+) -> dict[str, float | int]:
+    return calculate_metrics(
+        dataframe[["actual", prediction_column]].rename(
+            columns={prediction_column: "prediction"}
+        )
+    )
+
+
+def assert_candidate_rows_are_paired(
+    baseline_predictions: pd.DataFrame,
+    candidate_predictions: pd.DataFrame,
+) -> dict[str, int]:
+    """Exige identidad exacta de keys, actual y baseline en vista operativa."""
+
+    keys = ["fold_id", "territory_id", "target_month_id"]
+    baseline = baseline_predictions[
+        [*keys, "actual", "prediction"]
+    ].rename(
+        columns={
+            "actual": "actual_expected",
+            "prediction": "baseline_expected",
+        }
+    )
+    candidate = candidate_predictions[
+        [*keys, "actual", "baseline_prediction"]
+    ]
+    if baseline.duplicated(keys).any() or candidate.duplicated(keys).any():
+        raise AssertionError("La comparacion emparejada contiene keys duplicadas.")
+    merged = baseline.merge(candidate, on=keys, how="outer", indicator=True)
+    missing = int(merged["_merge"].eq("left_only").sum())
+    extra = int(merged["_merge"].eq("right_only").sum())
+    if missing or extra:
+        raise AssertionError(
+            f"Keys operativas no coinciden: missing={missing}, extra={extra}."
+        )
+    common = merged.loc[merged["_merge"].eq("both")]
+    actual_mismatch = int(
+        (~np.isclose(
+            common["actual_expected"], common["actual"],
+            rtol=0, atol=1e-9, equal_nan=True,
+        )).sum()
+    )
+    baseline_mismatch = int(
+        (~np.isclose(
+            common["baseline_expected"], common["baseline_prediction"],
+            rtol=0, atol=1e-9, equal_nan=True,
+        )).sum()
+    )
+    if actual_mismatch or baseline_mismatch:
+        raise AssertionError(
+            "Candidate y baseline no comparten actual/prediccion baseline."
+        )
+    return {
+        "baseline_rows": int(len(baseline)),
+        "candidate_rows": int(len(candidate)),
+        "common_rows": int(len(common)),
+        "missing_keys": missing,
+        "extra_keys": extra,
+        "actual_mismatches": actual_mismatch,
+        "baseline_mismatches": baseline_mismatch,
+    }
+
+
+def calculate_paired_metrics(
+    dataframe: pd.DataFrame,
+    *,
+    candidate_prediction_column: str,
+) -> dict[str, float | int]:
+    """Compara errores baseline/candidato sobre las mismas filas."""
+
+    required = {"actual", "baseline_prediction", candidate_prediction_column}
+    missing = sorted(required.difference(dataframe.columns))
+    if missing:
+        raise ValueError("Comparacion sin columnas: " + ", ".join(missing))
+    paired = dataframe.loc[
+        dataframe[list(required)].notna().all(axis=1)
+    ].copy()
+    if len(paired) != len(dataframe):
+        raise AssertionError("La comparacion contiene filas no emparejadas.")
+    baseline = _metrics_for_prediction(paired, "baseline_prediction")
+    candidate = _metrics_for_prediction(paired, candidate_prediction_column)
+    return {
+        "n": int(len(paired)),
+        "baseline_MAE": float(baseline["MAE"]),
+        "candidate_MAE": float(candidate["MAE"]),
+        "baseline_RMSE": float(baseline["RMSE"]),
+        "candidate_RMSE": float(candidate["RMSE"]),
+        "baseline_WAPE_pct": float(baseline["WAPE_pct"]),
+        "candidate_WAPE_pct": float(candidate["WAPE_pct"]),
+        "baseline_bias": float(baseline["bias"]),
+        "candidate_bias": float(candidate["bias"]),
+        "mae_skill_pct": calculate_skill_mae_pct(
+            float(baseline["MAE"]), float(candidate["MAE"])
+        ),
+        "wape_skill_pct": calculate_skill_wape_pct(
+            float(baseline["WAPE_pct"]), float(candidate["WAPE_pct"])
+        ),
+    }
+
+
+def _comparison_outcome(skill: float, *, tolerance: float = 1e-12) -> str:
+    if skill > tolerance:
+        return "win"
+    if skill < -tolerance:
+        return "loss"
+    return "tie"
+
+
+def _group_candidate_metrics(
+    candidate_predictions: pd.DataFrame,
+    group_columns: list[str],
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    group_arg: str | list[str] = (
+        group_columns[0] if len(group_columns) == 1 else group_columns
+    )
+    for group_key, group in candidate_predictions.groupby(
+        group_arg, sort=True, observed=True
+    ):
+        key_values = (
+            (group_key,) if len(group_columns) == 1 else tuple(group_key)
+        )
+        metrics = calculate_paired_metrics(
+            group, candidate_prediction_column="operational_prediction"
+        )
+        available = int(group["candidate_available"].sum())
+        fallback_rows = int(group["fallback_used"].sum())
+        rows.append(
+            {
+                **dict(zip(group_columns, key_values)),
+                "candidate_available_rows": available,
+                "fallback_rows": fallback_rows,
+                "candidate_coverage_pct": available / len(group) * 100,
+                **metrics,
+                "outcome": _comparison_outcome(
+                    float(metrics["mae_skill_pct"])
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def calculate_candidate_fold_metrics(
+    candidate_predictions: pd.DataFrame,
+    config: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Compara baseline y candidato operativo por rolling validation fold."""
+
+    resolved_config = config or load_modeling_v2_config()
+    metrics = _group_candidate_metrics(candidate_predictions, ["fold_id"])
+    periods = {
+        str(fold["id"]): f"{fold['start']}/{fold['end']}"
+        for fold in resolved_config["folds"]
+    }
+    metrics.insert(
+        1, "period", metrics["fold_id"].map(periods)
+    )
+    return metrics
+
+
+def calculate_candidate_territory_metrics(
+    candidate_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compara baseline y candidato operativo por provincia."""
+
+    metrics = _group_candidate_metrics(
+        candidate_predictions, ["territory_id"]
+    )
+    names = (
+        candidate_predictions[["territory_id", "territory_name"]]
+        .drop_duplicates()
+        .groupby("territory_id")["territory_name"]
+        .agg(lambda values: values.astype(str).unique().tolist())
+    )
+    if names.map(len).ne(1).any():
+        raise ValueError("Nombres territoriales inconsistentes.")
+    metrics.insert(
+        1,
+        "territory_name",
+        metrics["territory_id"].map(names.map(lambda values: values[0])),
+    )
+    return metrics
+
+
+def calculate_candidate_month_metrics(
+    candidate_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compara por mes calendario sin crear reglas mensuales."""
+
+    data = candidate_predictions.copy()
+    data["month_number"] = pd.PeriodIndex(
+        data["target_month_id"], freq="M"
+    ).month
+    return _group_candidate_metrics(data, ["month_number"])
+
+
+def calculate_candidate_origin_metrics(
+    candidate_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compara por target/origin sobre todos los territorios disponibles."""
+
+    metrics = _group_candidate_metrics(
+        candidate_predictions, ["fold_id", "target_month_id"]
+    )
+    metrics = metrics.rename(columns={"n": "n_territories"})
+    return metrics.sort_values("target_month_id", ignore_index=True)
+
+
+def calculate_trend_factor_distribution(
+    candidate_predictions: pd.DataFrame,
+    *,
+    by_fold: bool,
+) -> pd.DataFrame:
+    """Resume factores raw disponibles pooled o por fold."""
+
+    available = candidate_predictions.loc[
+        candidate_predictions["candidate_available"]
+        & candidate_predictions["trend_factor"].notna()
+    ].copy()
+    groups = (
+        available.groupby("fold_id", sort=True)
+        if by_fold
+        else [("validation_pooled", available)]
+    )
+    rows: list[dict[str, Any]] = []
+    for fold_id, group in groups:
+        factors = pd.to_numeric(group["trend_factor"], errors="raise")
+        rows.append(
+            {
+                "fold_id": str(fold_id),
+                "n": int(len(factors)),
+                "min": float(factors.min()),
+                "P01": float(factors.quantile(0.01)),
+                "P05": float(factors.quantile(0.05)),
+                "P25": float(factors.quantile(0.25)),
+                "median": float(factors.median()),
+                "P75": float(factors.quantile(0.75)),
+                "P95": float(factors.quantile(0.95)),
+                "P99": float(factors.quantile(0.99)),
+                "max": float(factors.max()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def largest_candidate_adjustments(
+    candidate_predictions: pd.DataFrame,
+    *,
+    limit: int = 20,
+) -> pd.DataFrame:
+    """Devuelve los mayores cambios relativos raw frente al seasonal naive."""
+
+    available = candidate_predictions.loc[
+        candidate_predictions["candidate_available"]
+    ].copy()
+    denominator = available["baseline_prediction"].abs()
+    available["relative_adjustment"] = np.where(
+        denominator.gt(0),
+        (available["candidate_prediction"] - available["baseline_prediction"])
+        .abs()
+        / denominator,
+        np.nan,
+    )
+    available["candidate_error"] = (
+        available["candidate_prediction"] - available["actual"]
+    )
+    available["baseline_error"] = (
+        available["baseline_prediction"] - available["actual"]
+    )
+    columns = [
+        "fold_id",
+        "territory_id",
+        "territory_name",
+        "target_month_id",
+        "baseline_prediction",
+        "trend_factor",
+        "candidate_prediction",
+        "actual",
+        "candidate_error",
+        "baseline_error",
+        "relative_adjustment",
+    ]
+    return available.sort_values(
+        "relative_adjustment", ascending=False
+    )[columns].head(limit).reset_index(drop=True)
+
+
+def screen_seasonal_trend_candidate(
+    pooled_metrics: Mapping[str, Any],
+    fold_metrics: pd.DataFrame,
+    territory_metrics: pd.DataFrame,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Aplica el screening determinista B2, no una gate estadistica final."""
+
+    resolved_config = config or load_modeling_v2_config()
+    screening = resolved_config["screening"]
+    if (
+        screening.get("bias_guardrail")
+        != "absolute_candidate_bias_not_greater_than_baseline"
+    ):
+        raise ValueError("Guardrail de bias B2 no soportado.")
+    fold_skills = pd.to_numeric(fold_metrics["mae_skill_pct"])
+    territory_skills = pd.to_numeric(territory_metrics["mae_skill_pct"])
+    fold_wins = int(fold_skills.gt(0).sum())
+    territory_wins = int(territory_skills.gt(0).sum())
+    if territory_skills.empty:
+        raise ValueError("El screening requiere metricas territoriales.")
+    territory_win_fraction = territory_wins / len(territory_skills)
+
+    checks = {
+        "A_pooled_mae_skill_positive": (
+            float(pooled_metrics["mae_skill_pct"]) > 0
+        ),
+        "B_at_least_two_folds_positive": (
+            fold_wins >= int(screening["minimum_positive_fold_count"])
+        ),
+        "C_median_fold_skill_positive": float(fold_skills.median()) > 0,
+        "D_more_than_half_provinces_positive": (
+            territory_win_fraction
+            > float(screening["province_win_fraction_strictly_greater_than"])
+        ),
+        "E_median_territorial_skill_positive": (
+            float(territory_skills.median()) > 0
+        ),
+        "F_absolute_bias_not_worse": (
+            abs(float(pooled_metrics["candidate_bias"]))
+            <= abs(float(pooled_metrics["baseline_bias"]))
+        ),
+    }
+    if all(checks.values()):
+        conclusion = "SEASONAL TREND CANDIDATE PASSES SCREENING"
+    elif checks["A_pooled_mae_skill_positive"]:
+        conclusion = "SEASONAL TREND CANDIDATE UNSTABLE"
+    else:
+        conclusion = "SEASONAL TREND CANDIDATE FAILS SCREENING"
+    return {
+        **checks,
+        "fold_wins": fold_wins,
+        "territory_wins": territory_wins,
+        "territory_win_fraction": territory_win_fraction,
+        "median_fold_skill_pct": float(fold_skills.median()),
+        "median_territorial_skill_pct": float(territory_skills.median()),
+        "conclusion": conclusion,
+    }
+
+
+def build_current_candidate_illustration(
+    gold_history: pd.DataFrame,
+    *,
+    target_month_id: str,
+    config: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Genera una ilustracion read-only para un target mensual futuro."""
+
+    resolved_config = config or load_modeling_v2_config()
+    policy = cutoff_policy_from_config(resolved_config)
+    origin = resolve_information_cutoff(target_month_id, policy)
+    return build_current_seasonal_trend_forecasts(
+        gold_history, origin, resolved_config["candidate"]
+    )
+
+
+def reproduce_seasonal_trend_in_memory(
+    gold_history: pd.DataFrame | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Ejecuta el screening experimental B2 completamente en memoria."""
+
+    resolved_config = config or load_modeling_v2_config()
+    source_path = Path(str(resolved_config["source"]["path"]))
+    if not source_path.is_absolute():
+        source_path = PROJECT_ROOT / source_path
+    gold = (
+        gold_history
+        if gold_history is not None
+        else load_gold_history(source_path)
+    )
+    baseline_result = reproduce_baseline_in_memory(gold, resolved_config)
+    baseline = baseline_result["comparable_predictions"]
+    candidate = build_seasonal_trend_predictions(
+        baseline, gold, resolved_config["candidate"]
+    )
+    paired_invariant = assert_candidate_rows_are_paired(baseline, candidate)
+
+    pure = candidate.loc[candidate["candidate_available"]].copy()
+    pure_metrics = calculate_paired_metrics(
+        pure, candidate_prediction_column="candidate_prediction"
+    )
+    operational_metrics = calculate_paired_metrics(
+        candidate, candidate_prediction_column="operational_prediction"
+    )
+    fold_metrics = calculate_candidate_fold_metrics(candidate, resolved_config)
+    territory_metrics = calculate_candidate_territory_metrics(candidate)
+    month_metrics = calculate_candidate_month_metrics(candidate)
+    origin_metrics = calculate_candidate_origin_metrics(candidate)
+    post_stress = candidate.loc[
+        candidate["fold_id"].isin(["validation_2", "validation_3"])
+    ]
+    post_stress_metrics = calculate_paired_metrics(
+        post_stress, candidate_prediction_column="operational_prediction"
+    )
+    screening = screen_seasonal_trend_candidate(
+        operational_metrics,
+        fold_metrics,
+        territory_metrics,
+        resolved_config,
+    )
+    return {
+        "baseline": baseline_result,
+        "candidate_predictions": candidate,
+        "pure_candidate_predictions": pure,
+        "paired_invariant": paired_invariant,
+        "pure_metrics": pure_metrics,
+        "operational_metrics": operational_metrics,
+        "fold_metrics": fold_metrics,
+        "territory_metrics": territory_metrics,
+        "month_metrics": month_metrics,
+        "origin_metrics": origin_metrics,
+        "trend_factor_pooled": calculate_trend_factor_distribution(
+            candidate, by_fold=False
+        ),
+        "trend_factor_by_fold": calculate_trend_factor_distribution(
+            candidate, by_fold=True
+        ),
+        "extreme_adjustments": largest_candidate_adjustments(candidate),
+        "fallback_reasons": (
+            candidate.loc[candidate["fallback_used"], "fallback_reason"]
+            .value_counts()
+            .rename_axis("fallback_reason")
+            .reset_index(name="rows")
+        ),
+        "post_stress_metrics": post_stress_metrics,
+        "screening": screening,
     }

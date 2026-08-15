@@ -11,6 +11,7 @@ from src.models.evaluate_v2 import (
     calculate_origin_metrics,
     calculate_pooled_metrics,
     calculate_skill_mae_pct,
+    calculate_skill_wape_pct,
     calculate_territory_metrics,
     compare_with_frozen_v1,
     comparable_predictions,
@@ -189,6 +190,12 @@ class TestEvaluateV2Integration(unittest.TestCase):
         self.assertGreater(calculate_skill_mae_pct(10.0, 9.0), 0.0)
         self.assertLess(calculate_skill_mae_pct(10.0, 11.0), 0.0)
         self.assertTrue(np.isnan(calculate_skill_mae_pct(0.0, 1.0)))
+
+    def test_wape_skill_uses_same_positive_improvement_sign(self) -> None:
+        self.assertEqual(calculate_skill_wape_pct(10.0, 10.0), 0.0)
+        self.assertGreater(calculate_skill_wape_pct(10.0, 9.0), 0.0)
+        self.assertLess(calculate_skill_wape_pct(10.0, 11.0), 0.0)
+        self.assertTrue(np.isnan(calculate_skill_wape_pct(0.0, 1.0)))
 
 
 if __name__ == "__main__":

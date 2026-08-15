@@ -1,9 +1,9 @@
 methodology:
   id: "point_in_time_v2"
-  version: "2.0.0-b1"
+  version: "2.0.0-b2"
   evaluation_design: "rolling_validation"
   information_reconstruction: "availability_correct_latest_vintage"
-  status: "infrastructure_validation"
+  status: "candidate_screening"
 
 source:
   path: "data/gold/gold_tourism_demand_monthly.parquet"
@@ -43,6 +43,24 @@ baseline:
   target_lag_months: 12
   missing_reference_reason: "missing_seasonal_reference"
 
+candidate:
+  id: "seasonal_trend_adjusted_3m_yoy_v1"
+  candidate_version: "1.0.0"
+  formula_version: "seasonal_anchor_times_raw_3m_yoy_v1"
+  window_months: 3
+  seasonal_reference_lag_months: 12
+  clipping: false
+  fallback:
+    id: "availability_fallback"
+    baseline_id: "seasonal_naive_lag_12"
+    performance_based: false
+
+screening:
+  minimum_positive_fold_count: 2
+  province_win_fraction_strictly_greater_than: 0.5
+  bias_guardrail: "absolute_candidate_bias_not_greater_than_baseline"
+  statistical_selection_gate: false
+
 metrics:
   primary: "MAE"
   secondary:
@@ -55,9 +73,8 @@ metrics:
     100 * (MAE_baseline - MAE_candidate) / MAE_baseline
 
 provenance:
-  config_version: "modeling_v2_config_b1_v1"
-  code_contract_version: "point_in_time_v2_b1_v1"
+  config_version: "modeling_v2_config_b2_v1"
+  code_contract_version: "point_in_time_v2_b2_v1"
   frozen_comparison_path: >-
     data/model_outputs/model_selection_validation_predictions.parquet
   writes_evaluation_artifacts: false
-
