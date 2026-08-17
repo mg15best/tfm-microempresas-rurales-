@@ -1,0 +1,73 @@
+name: Freeze ETS v2 canonical predictions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enforce canonical main ref
+        if: ${{ github.ref_name != 'main' }}
+        run: |
+          echo "Canonical ETS freeze is restricted to main." >&2
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.7"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Report canonical numerical environment
+        run: >-
+          python -c "import platform, numpy, scipy, pandas, patsy, pyarrow, statsmodels;
+          print('platform=' + platform.platform());
+          print('python=' + platform.python_version());
+          print('numpy=' + numpy.__version__);
+          print('scipy=' + scipy.__version__);
+          print('pandas=' + pandas.__version__);
+          print('patsy=' + patsy.__version__);
+          print('pyarrow=' + pyarrow.__version__);
+          print('statsmodels=' + statsmodels.__version__)"
+
+      - name: Run ETS and freezer tests
+        run: >-
+          python -m pytest -q
+          tests/test_ets_v2.py
+          tests/test_freeze_ets_v2_predictions.py
+
+      - name: Generate canonical freeze
+        run: >-
+          python -m src.models.freeze_ets_v2_predictions
+          --artifact-path canonical-freeze/ets_v2_rolling_validation_predictions.parquet
+          --metadata-path canonical-freeze/ets_v2_rolling_validation_predictions.metadata.yml
+
+      - name: Verify canonical freeze and hashes
+        run: >-
+          python -m src.models.freeze_ets_v2_predictions
+          --verify-only
+          --artifact-path canonical-freeze/ets_v2_rolling_validation_predictions.parquet
+          --metadata-path canonical-freeze/ets_v2_rolling_validation_predictions.metadata.yml
+
+      - name: Upload canonical predictions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-v2-canonical-${{ github.sha }}
+          path: |
+            canonical-freeze/ets_v2_rolling_validation_predictions.parquet
+            canonical-freeze/ets_v2_rolling_validation_predictions.metadata.yml
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
