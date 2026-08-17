@@ -84,6 +84,24 @@ ets_candidate:
     baseline_id: "seasonal_naive_lag_12"
     performance_based: false
 
+numerical_reproducibility:
+  phase: "B4R"
+  canonical_environment:
+    runner: "ubuntu-24.04"
+    python: "3.14.7"
+    numpy: "2.5.2"
+    scipy: "1.18.0"
+    pandas: "3.0.3"
+    patsy: "1.0.2"
+    statsmodels: "0.14.6"
+  local_python_major_minor: "3.14"
+  exact_cross_platform_forecasts: false
+  policy: "exact_invariants_and_bounded_numerical_approximations"
+  forecast_relative_tolerance: 0.00001
+  pooled_skill_absolute_tolerance_percentage_points: 1.0
+  fold_skill_absolute_tolerance_percentage_points: 2.25
+  training_hash_algorithm: "sha256_float64_little_endian"
+
 screening:
   minimum_positive_fold_count: 2
   province_win_fraction_strictly_greater_than: 0.5

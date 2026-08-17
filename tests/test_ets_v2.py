@@ -1,9 +1,14 @@
 import unittest
 from dataclasses import FrozenInstanceError
+import hashlib
+import platform
 from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
+import patsy
+import scipy
+import statsmodels
 
 from src.models.ets_v2 import (
     fit_ets_forecast,
@@ -24,6 +29,16 @@ from src.models.modeling_v2_common import (
     load_modeling_v2_config,
     resolve_information_cutoff,
 )
+
+
+def numerical_runtime_summary() -> str:
+    return (
+        f"platform={platform.platform()}, "
+        f"python={platform.python_version()}, "
+        f"numpy={np.__version__}, scipy={scipy.__version__}, "
+        f"pandas={pd.__version__}, patsy={patsy.__version__}, "
+        f"statsmodels={statsmodels.__version__}"
+    )
 
 
 def synthetic_history(
@@ -66,6 +81,20 @@ class TestETSPointInTimeFormula(unittest.TestCase):
         self.assertEqual(self.candidate["library_version"], "0.14.6")
         self.assertEqual(
             self.candidate["screening_status"], "passed_screening"
+        )
+
+    def test_numerical_stack_is_explicitly_frozen(self) -> None:
+        reproducibility = self.config["numerical_reproducibility"]
+        canonical = reproducibility["canonical_environment"]
+
+        self.assertEqual(np.__version__, canonical["numpy"])
+        self.assertEqual(scipy.__version__, canonical["scipy"])
+        self.assertEqual(pd.__version__, canonical["pandas"])
+        self.assertEqual(patsy.__version__, canonical["patsy"])
+        self.assertEqual(statsmodels.__version__, canonical["statsmodels"])
+        self.assertEqual(
+            ".".join(platform.python_version_tuple()[:2]),
+            reproducibility["local_python_major_minor"],
         )
 
     def test_effective_horizon_is_three_and_business_horizon_is_one(self) -> None:
@@ -239,6 +268,29 @@ class TestETSV2Integration(unittest.TestCase):
         self.assertTrue((target.asi8 - latest.asi8 == 3).all())
         self.assertTrue(self.candidate["effective_horizon_steps"].eq(3).all())
 
+    def test_real_training_input_is_order_independent_and_hashed(self) -> None:
+        policy = cutoff_policy_from_config(self.config)
+        origin = resolve_information_cutoff("2026-09", policy)
+        history = self.gold.loc[
+            self.gold["territory_id"].astype(str).eq("ES-PROV-01")
+        ].copy()
+        shuffled = history.sample(frac=1.0, random_state=42)
+
+        ordered_training = prepare_ets_training_series(
+            history, origin, self.config["ets_candidate"]
+        )
+        shuffled_training = prepare_ets_training_series(
+            shuffled, origin, self.config["ets_candidate"]
+        )
+        ordered_values = np.asarray(ordered_training.values, dtype="<f8")
+        shuffled_values = np.asarray(shuffled_training.values, dtype="<f8")
+
+        np.testing.assert_array_equal(ordered_values, shuffled_values)
+        self.assertEqual(
+            hashlib.sha256(ordered_values.tobytes()).hexdigest(),
+            "3cdb1b74ec3f92e2402e52549165e7bec774a2088469957a6e1832983a650b98",
+        )
+
     def test_availability_fallback_never_uses_performance(self) -> None:
         fallback = self.candidate.loc[self.candidate["fallback_used"]]
 
@@ -279,13 +331,31 @@ class TestETSV2Integration(unittest.TestCase):
             },
         )
         self.assertAlmostEqual(
-            fold.loc["validation_1", "mae_skill_pct"], 31.62470499, places=5
+            fold.loc["validation_1", "mae_skill_pct"],
+            31.62470499,
+            delta=float(
+                self.config["numerical_reproducibility"]
+                ["fold_skill_absolute_tolerance_percentage_points"]
+            ),
+            msg=numerical_runtime_summary(),
         )
         self.assertAlmostEqual(
-            fold.loc["validation_2", "mae_skill_pct"], 5.77449852, places=5
+            fold.loc["validation_2", "mae_skill_pct"],
+            5.77449852,
+            delta=float(
+                self.config["numerical_reproducibility"]
+                ["fold_skill_absolute_tolerance_percentage_points"]
+            ),
+            msg=numerical_runtime_summary(),
         )
         self.assertAlmostEqual(
-            fold.loc["validation_3", "mae_skill_pct"], -3.87382573, places=5
+            fold.loc["validation_3", "mae_skill_pct"],
+            -3.87382573,
+            delta=float(
+                self.config["numerical_reproducibility"]
+                ["fold_skill_absolute_tolerance_percentage_points"]
+            ),
+            msg=numerical_runtime_summary(),
         )
 
     def test_screening_is_deterministic(self) -> None:
@@ -311,6 +381,11 @@ class TestETSV2Integration(unittest.TestCase):
         self.assertAlmostEqual(
             self.result["operational_metrics"]["mae_skill_pct"],
             18.41742698,
+            delta=float(
+                self.config["numerical_reproducibility"]
+                ["pooled_skill_absolute_tolerance_percentage_points"]
+            ),
+            msg=numerical_runtime_summary(),
         )
         self.assertEqual(
             self.result["territory_metrics"]["outcome"]
@@ -330,8 +405,24 @@ class TestETSV2Integration(unittest.TestCase):
         self.assertEqual(araba["effective_horizon_steps"], 3)
         self.assertEqual(araba["baseline_prediction"], 7691.0)
         self.assertTrue(araba["candidate_available"])
-        self.assertAlmostEqual(araba["raw_prediction"], 7794.63521722)
-        self.assertAlmostEqual(araba["prediction"], 7794.63521722)
+        forecast_rtol = float(
+            self.config["numerical_reproducibility"]
+            ["forecast_relative_tolerance"]
+        )
+        np.testing.assert_allclose(
+            araba["raw_prediction"],
+            7794.63521722,
+            rtol=forecast_rtol,
+            atol=0.0,
+            err_msg=numerical_runtime_summary(),
+        )
+        np.testing.assert_allclose(
+            araba["prediction"],
+            7794.63521722,
+            rtol=forecast_rtol,
+            atol=0.0,
+            err_msg=numerical_runtime_summary(),
+        )
         self.assertEqual(araba["training_rows"], 258)
         self.assertEqual(araba["training_start"], "2005-01")
 
