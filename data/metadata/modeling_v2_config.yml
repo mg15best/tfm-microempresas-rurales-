@@ -1,9 +1,9 @@
 methodology:
   id: "point_in_time_v2"
-  version: "2.0.0-b4"
+  version: "2.0.0-b5"
   evaluation_design: "rolling_validation"
   information_reconstruction: "availability_correct_latest_vintage"
-  status: "ets_candidate_screening"
+  status: "provisional_validation_champion_selected"
 
 source:
   path: "data/gold/gold_tourism_demand_monthly.parquet"
@@ -39,7 +39,7 @@ folds:
 
 baseline:
   id: "seasonal_naive_lag_12"
-  role: "provisional_validation_champion"
+  role: "historical_validation_baseline"
   target_lag_months: 12
   missing_reference_reason: "missing_seasonal_reference"
 
@@ -84,6 +84,42 @@ ets_candidate:
     baseline_id: "seasonal_naive_lag_12"
     performance_based: false
 
+operational_selection:
+  selected_model_id: "holt_winters_additive_damped_v1"
+  status: "provisional_validation_champion"
+  evidence_scope: "canonical_rolling_validation"
+  independent_test_confirmed: false
+  canonical_artifact_path: >-
+    data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+  canonical_metadata_path: >-
+    data/metadata/ets_v2_rolling_validation_predictions.metadata.yml
+  canonical_validation:
+    artifact_path: >-
+      data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+    metadata_path: >-
+      data/metadata/ets_v2_rolling_validation_predictions.metadata.yml
+    artifact_sha256: >-
+      7f8a5a44c1204b7c1bfdc5f840e1a58939f8d348ff9e97977dd5d1b0f39fd9c7
+    metadata_sha256: >-
+      93bf81335aa18d3eed2ba2a0ef1c0d20282d858b0a1e96ec9c6cd5d39a2c9e17
+    logical_prediction_sha256: >-
+      81515245010068b764eb27ba8bc6e32dffcbc5c590b6b823017d98f0121e8f04
+    generator_commit_sha: "3465675af079dc2c9dcfc2f89596c62144e49c76"
+    github_run_id: "32359193026"
+    official_canonical_artifact: true
+    expected_rows: 1750
+    expected_territories: 50
+    expected_origins: 35
+    expected_fold_ids:
+      - "validation_1"
+      - "validation_2"
+      - "validation_3"
+    prediction_column: "operational_prediction"
+  fallback:
+    model_id: "seasonal_naive_lag_12"
+    policy: "availability_only"
+    performance_based: false
+
 numerical_reproducibility:
   phase: "B4R"
   canonical_environment:
@@ -121,6 +157,22 @@ prediction_interval:
   transversal_dependence_limitation: true
   exact_iid_coverage_guarantee: false
 
+operational_prediction_interval:
+  method_id: "operational_prequential_scaled_absolute_residual_interval_v1"
+  method_version: "1.0.0"
+  nominal_level: 0.80
+  alpha: 0.20
+  minimum_calibration_origins: 12
+  calibration_scope: "pooled_territories_expanding_origins"
+  score_prediction_column: "operational_prediction"
+  scale_column: "baseline_prediction"
+  source_artifact: >-
+    data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+  quantile_method: "finite_sample_order_statistic"
+  lower_bound: 0
+  transversal_dependence_limitation: true
+  exact_iid_coverage_guarantee: false
+
 metrics:
   primary: "MAE"
   secondary:
@@ -133,8 +185,8 @@ metrics:
     100 * (MAE_baseline - MAE_candidate) / MAE_baseline
 
 provenance:
-  config_version: "modeling_v2_config_b4_v1"
-  code_contract_version: "point_in_time_v2_b4_v1"
+  config_version: "modeling_v2_config_b5_v1"
+  code_contract_version: "point_in_time_v2_b5_v1"
   frozen_comparison_path: >-
     data/model_outputs/model_selection_validation_predictions.parquet
   writes_evaluation_artifacts: false

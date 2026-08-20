@@ -11,6 +11,7 @@ import scipy
 import statsmodels
 
 from src.models.ets_v2 import (
+    EXPECTED_ETS_FIT_EXCEPTIONS,
     fit_ets_forecast,
     prepare_ets_training_series,
     resolve_effective_horizon,
@@ -212,6 +213,43 @@ class TestETSPointInTimeFormula(unittest.TestCase):
         self.assertEqual(result.raw_prediction, -3.0)
         self.assertEqual(result.prediction, 0.0)
         self.assertTrue(result.clipping_applied)
+
+    def test_expected_numerical_exception_becomes_fit_failure(self) -> None:
+        with patch(
+            "src.models.ets_v2.ExponentialSmoothing",
+            side_effect=FloatingPointError("expected numerical failure"),
+        ):
+            result = fit_ets_forecast(
+                synthetic_history(), self.origin(), self.candidate
+            )
+
+        self.assertFalse(result.candidate_available)
+        self.assertTrue(result.fit_attempted)
+        self.assertEqual(result.unavailable_reason, "fit_failure")
+        self.assertEqual(result.fit_warning_count, 1)
+        self.assertIn("FloatingPointError", result.fit_warning_messages[0])
+
+    def test_unexpected_fit_exceptions_propagate(self) -> None:
+        self.assertNotIn(RuntimeError, EXPECTED_ETS_FIT_EXCEPTIONS)
+        self.assertNotIn(AssertionError, EXPECTED_ETS_FIT_EXCEPTIONS)
+        self.assertNotIn(KeyError, EXPECTED_ETS_FIT_EXCEPTIONS)
+        defects = (
+            RuntimeError("simulated programming defect"),
+            AssertionError("simulated invariant defect"),
+            KeyError("simulated missing internal key"),
+        )
+        for defect in defects:
+            with (
+                self.subTest(defect=type(defect).__name__),
+                patch(
+                    "src.models.ets_v2.ExponentialSmoothing",
+                    side_effect=defect,
+                ),
+                self.assertRaises(type(defect)),
+            ):
+                fit_ets_forecast(
+                    synthetic_history(), self.origin(), self.candidate
+                )
 
     def test_output_is_deterministic_within_numeric_tolerance(self) -> None:
         history = synthetic_history()

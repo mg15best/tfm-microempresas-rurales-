@@ -1,392 +1,557 @@
 import unittest
-
 from copy import deepcopy
-from datetime import date
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 
+from src.models.ets_v2 import ETSForecastResult
 from src.models.inference import (
+    EFFECTIVE_MODEL_HORIZON_STEPS,
+    FALLBACK_MODEL_ID,
+    SELECTED_MODEL_ID,
+    SELECTION_STATUS,
     EmptyInferenceDatasetError,
-    GlobalReferenceGapError,
     InferenceConfigurationError,
     InferenceDataError,
     InvalidTerritoryError,
-    TerritorialReferenceGapError,
+    MissingReferenceError,
     UnsupportedHorizonError,
+    load_inference_dataset,
     predict_next_month,
 )
-from src.models.modeling_common import load_config
+from src.models.modeling_v2_common import (
+    MODELING_V2_CONFIG_PATH,
+    load_modeling_v2_config,
+)
 
 
-class TestInference(unittest.TestCase):
-    """Pruebas de la inferencia estacional operacional."""
-
-    def setUp(self) -> None:
-        self.config = {
-            "problem": {
-                "forecast_horizon_months": 1,
-            },
-            "target": {
-                "source_column": "overnight_stays_total",
-            },
-            "source_dataset": {
-                "path": "data/gold/gold_tourism_demand_monthly.parquet",
-            },
-            "baseline": {
-                "name": "seasonal_naive_lag_12",
-                "prediction_feature": "lag_12_overnight_stays",
-            },
-            "fallback": {
-                "if_no_candidate_beats_baseline": {
-                    "selected_solution": "seasonal_naive_lag_12",
-                },
-            },
-        }
-        self.dataframe = self._build_dataframe()
-
-    @staticmethod
-    def _build_dataframe() -> pd.DataFrame:
-        rows = [
-            ("ES-PROV-01", "Provincia A", "2025-01", 101.0, False),
-            ("ES-PROV-01", "Provincia A", "2025-05", 100.0, False),
-            ("ES-PROV-01", "Provincia A", "2025-06", 118.0, False),
-            ("ES-PROV-01", "Provincia A", "2025-07", 999.0, False),
-            ("ES-PROV-01", "Provincia A", "2025-09", 123.0, False),
-            ("ES-PROV-01", "Provincia A", "2026-05", 500.0, True),
-            ("ES-PROV-02", "Provincia B", "2025-09", 456.0, False),
-            ("ES-PROV-02", "Provincia B", "2026-05", 600.0, True),
-        ]
-        return pd.DataFrame(
-            {
-                "territory_id": [row[0] for row in rows],
-                "territory_name": [row[1] for row in rows],
-                "month_id": [row[2] for row in rows],
-                "date_month": pd.to_datetime([row[2] for row in rows]),
-                "overnight_stays_total": [row[3] for row in rows],
-                "is_provisional": [row[4] for row in rows],
-                "source_snapshot_id": "snapshot-001",
-                "pipeline_run_id": "run-001",
-                "data_version": "gold-test-v1",
-            }
-        )
-
-    def _predict(
-        self,
-        dataframe: pd.DataFrame | None = None,
-        **kwargs: object,
+def synthetic_gold() -> pd.DataFrame:
+    months = pd.period_range("2017-01", "2026-12", freq="M")
+    rows: list[dict[str, object]] = []
+    for territory_id, territory_name, offset in (
+        ("ES-PROV-01", "Provincia A", 0.0),
+        ("ES-PROV-02", "Provincia B", 500.0),
     ):
-        kwargs.setdefault("as_of_date", "2026-08-13")
-        return predict_next_month(
-            "ES-PROV-01",
-            dataframe=self.dataframe if dataframe is None else dataframe,
-            config=self.config,
-            **kwargs,
-        )
+        for index, month in enumerate(months):
+            rows.append(
+                {
+                    "territory_id": territory_id,
+                    "territory_name": territory_name,
+                    "territory_level": "province",
+                    "month_id": str(month),
+                    "date_month": month.to_timestamp(),
+                    "overnight_stays_total": (
+                        1000.0 + offset + 8.0 * (index % 12) + index
+                    ),
+                    "complete_month_available": True,
+                    "is_provisional": month >= pd.Period("2026-01", freq="M"),
+                    "source_snapshot_id": "snapshot-v2-test",
+                    "pipeline_run_id": "pipeline-v2-test",
+                    "data_version": "gold-v2-test",
+                }
+            )
+    return pd.DataFrame(rows)
 
-    def test_valid_territory_returns_structured_result(self) -> None:
-        result = self._predict()
 
-        self.assertEqual(result.territory_id, "ES-PROV-01")
-        self.assertEqual(result.territory_name, "Provincia A")
-        self.assertEqual(result.model_name, "seasonal_naive_lag_12")
-        self.assertEqual(result.source_snapshot_id, "snapshot-001")
-        self.assertEqual(result.pipeline_run_id, "run-001")
-        self.assertEqual(result.data_version, "gold-test-v1")
+def ets_result(
+    *,
+    available: bool,
+    reason: str | None = None,
+    prediction: float | None = 4321.5,
+    raw_prediction: float | None = 4321.5,
+    clipping_applied: bool = False,
+    target: str = "2026-09",
+    cutoff: str = "2026-06",
+    territory_id: str = "ES-PROV-01",
+) -> ETSForecastResult:
+    return ETSForecastResult(
+        territory_id=territory_id,
+        target_month_id=target,
+        latest_available_month_id=cutoff,
+        effective_horizon_steps=3,
+        prediction=prediction if available else None,
+        raw_prediction=raw_prediction if available else None,
+        candidate_available=available,
+        unavailable_reason=None if available else reason,
+        training_rows=114,
+        training_observed_rows=114,
+        training_start="2017-01",
+        training_end=cutoff,
+        model_id=SELECTED_MODEL_ID,
+        clipping_applied=clipping_applied,
+        fit_attempted=True,
+        fit_seconds=0.01,
+        imputed_months_n=0,
+        imputed_month_ids=(),
+        fit_warning_count=0,
+        fit_warning_messages=(),
+    )
 
-    def test_invalid_territory_is_blocking(self) -> None:
-        with self.assertRaisesRegex(InvalidTerritoryError, "ES-PROV-99"):
-            predict_next_month(
-                "ES-PROV-99",
-                dataframe=self.dataframe,
-                config=self.config,
-                as_of_date="2026-08-13",
+
+class TestOperationalInferenceB5(unittest.TestCase):
+    def setUp(self) -> None:
+        self.config = load_modeling_v2_config()
+        self.dataframe = synthetic_gold()
+
+    def predict_with(
+        self,
+        forecast: ETSForecastResult,
+        *,
+        dataframe: pd.DataFrame | None = None,
+        config: dict | None = None,
+        as_of_date: str = "2026-08-20",
+    ):
+        with patch(
+            "src.models.inference.fit_ets_forecast",
+            return_value=forecast,
+        ):
+            return predict_next_month(
+                "ES-PROV-01",
+                as_of_date=as_of_date,
+                dataframe=self.dataframe if dataframe is None else dataframe,
+                config=self.config if config is None else config,
             )
 
-    def test_reference_month_is_exactly_target_minus_twelve(self) -> None:
-        result = self._predict()
+    def test_config_selects_provisional_ets_and_availability_fallback(self) -> None:
+        selection = self.config["operational_selection"]
+
+        self.assertEqual(selection["selected_model_id"], SELECTED_MODEL_ID)
+        self.assertEqual(selection["status"], SELECTION_STATUS)
+        self.assertFalse(selection["independent_test_confirmed"])
+        self.assertEqual(
+            selection["fallback"]["model_id"], FALLBACK_MODEL_ID
+        )
+        self.assertEqual(
+            selection["fallback"]["policy"], "availability_only"
+        )
+        self.assertFalse(selection["fallback"]["performance_based"])
+
+    def test_default_loader_uses_modeling_v2_config(self) -> None:
+        with (
+            patch(
+                "src.models.inference.load_modeling_v2_config",
+                return_value=self.config,
+            ) as loader,
+            patch(
+                "src.models.inference.fit_ets_forecast",
+                return_value=ets_result(available=True),
+            ),
+        ):
+            result = predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe,
+            )
+
+        loader.assert_called_once_with(MODELING_V2_CONFIG_PATH)
+        self.assertEqual(result.selected_model_id, SELECTED_MODEL_ID)
+
+    def test_target_business_origin_cutoff_and_horizons_are_v2(self) -> None:
+        result = self.predict_with(ets_result(available=True))
 
         self.assertEqual(result.target_month_id, "2026-09")
-        self.assertEqual(result.reference_month_id, "2025-09")
+        self.assertEqual(result.business_origin_month_id, "2026-08")
+        self.assertEqual(result.latest_available_month_id, "2026-06")
+        self.assertEqual(result.forecast_horizon_months, 1)
+        self.assertEqual(
+            result.effective_model_horizon_steps,
+            EFFECTIVE_MODEL_HORIZON_STEPS,
+        )
 
-    def test_prediction_equals_exact_reference_value(self) -> None:
-        result = self._predict()
+    def test_available_ets_is_the_point_forecast(self) -> None:
+        result = self.predict_with(ets_result(available=True))
 
-        self.assertEqual(result.predicted_overnight_stays_total, 123.0)
-        self.assertEqual(result.reference_overnight_stays_total, 123.0)
+        self.assertEqual(result.actual_model_used, SELECTED_MODEL_ID)
+        self.assertEqual(result.predicted_overnight_stays_total, 4321.5)
+        self.assertEqual(result.ets_raw_prediction, 4321.5)
+        self.assertFalse(result.fallback_used)
+        self.assertEqual(result.fallback_reason, "not_used")
+        self.assertTrue(np.isfinite(result.predicted_overnight_stays_total))
+        self.assertGreaterEqual(result.predicted_overnight_stays_total, 0)
+        self.assertTrue(result.is_operational)
+        with self.assertRaises(FrozenInstanceError):
+            result.fallback_used = True
 
-    def test_global_reference_gap_is_blocking(self) -> None:
-        dataframe = self.dataframe.loc[
-            ~self.dataframe["month_id"].eq("2025-09")
-        ]
+    def test_training_end_never_exceeds_information_cutoff(self) -> None:
+        result = self.predict_with(ets_result(available=True))
 
-        with self.assertRaisesRegex(GlobalReferenceGapError, "gap global"):
-            self._predict(dataframe)
+        self.assertLessEqual(
+            pd.Period(result.training_end, freq="M"),
+            pd.Period(result.latest_available_month_id, freq="M"),
+        )
 
-    def test_territorial_reference_gap_is_blocking(self) -> None:
-        dataframe = self.dataframe.loc[
-            ~(
-                self.dataframe["territory_id"].eq("ES-PROV-01")
-                & self.dataframe["month_id"].eq("2025-09")
+    def test_fit_receives_one_territory_and_no_future_rows(self) -> None:
+        captured: dict[str, pd.DataFrame] = {}
+
+        def fake_fit(history, origin, config):
+            captured["history"] = history.copy()
+            self.assertEqual(origin.latest_available_month_id, "2026-06")
+            return ets_result(available=True)
+
+        with patch(
+            "src.models.inference.fit_ets_forecast",
+            side_effect=fake_fit,
+        ):
+            predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe,
+                config=self.config,
             )
-        ]
+
+        history = captured["history"]
+        self.assertEqual(history["territory_id"].nunique(), 1)
+        self.assertEqual(set(history["territory_id"]), {"ES-PROV-01"})
+        self.assertLessEqual(
+            pd.PeriodIndex(history["month_id"], freq="M").max(),
+            pd.Period("2026-06", freq="M"),
+        )
+
+    def test_future_analytical_flags_cannot_change_inference(self) -> None:
+        calls: list[pd.DataFrame] = []
+
+        def causal_fit(history, origin, config):
+            calls.append(history.reset_index(drop=True).copy())
+            return ets_result(available=True)
+
+        mutations = (
+            ("complete_month_available", None),
+            ("is_provisional", None),
+            ("complete_month_available", "invalid"),
+            ("is_provisional", "invalid"),
+        )
+        results = []
+        with patch(
+            "src.models.inference.fit_ets_forecast",
+            side_effect=causal_fit,
+        ):
+            baseline = predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe,
+                config=self.config,
+            )
+            for column, invalid_value in mutations:
+                changed = self.dataframe.copy()
+                changed[column] = changed[column].astype(object)
+                future = (
+                    changed["territory_id"].eq("ES-PROV-01")
+                    & changed["month_id"].eq("2026-07")
+                )
+                changed.loc[future, column] = invalid_value
+                results.append(
+                    predict_next_month(
+                        "ES-PROV-01",
+                        as_of_date="2026-08-20",
+                        dataframe=changed,
+                        config=self.config,
+                    )
+                )
+
+        forecast_rtol = float(
+            self.config["numerical_reproducibility"]
+            ["forecast_relative_tolerance"]
+        )
+        for index, result in enumerate(results, start=1):
+            with self.subTest(mutation=mutations[index - 1]):
+                pd.testing.assert_frame_equal(calls[0], calls[index])
+                self.assertEqual(result.selected_model_id, baseline.selected_model_id)
+                self.assertEqual(result.actual_model_used, baseline.actual_model_used)
+                self.assertEqual(result.fallback_used, baseline.fallback_used)
+                self.assertEqual(result.fallback_reason, baseline.fallback_reason)
+                self.assertEqual(
+                    result.latest_available_month_id,
+                    baseline.latest_available_month_id,
+                )
+                self.assertEqual(result.training_end, baseline.training_end)
+                self.assertEqual(result.warnings, baseline.warnings)
+                np.testing.assert_allclose(
+                    result.predicted_overnight_stays_total,
+                    baseline.predicted_overnight_stays_total,
+                    rtol=forecast_rtol,
+                    atol=0.0,
+                )
+
+    def test_invalid_analytical_flags_within_cutoff_remain_blocking(self) -> None:
+        mutations = (
+            ("complete_month_available", None),
+            ("is_provisional", None),
+            ("complete_month_available", "invalid"),
+            ("is_provisional", "invalid"),
+        )
+        for column, invalid_value in mutations:
+            with self.subTest(column=column, invalid_value=invalid_value):
+                changed = self.dataframe.copy()
+                changed[column] = changed[column].astype(object)
+                known = (
+                    changed["territory_id"].eq("ES-PROV-01")
+                    & changed["month_id"].eq("2026-06")
+                )
+                changed.loc[known, column] = invalid_value
+                with (
+                    patch("src.models.inference.fit_ets_forecast") as fit,
+                    self.assertRaisesRegex(InferenceDataError, column),
+                ):
+                    predict_next_month(
+                        "ES-PROV-01",
+                        as_of_date="2026-08-20",
+                        dataframe=changed,
+                        config=self.config,
+                    )
+                fit.assert_not_called()
+
+    def test_ets_unavailable_uses_lag12_only_for_availability(self) -> None:
+        result = self.predict_with(
+            ets_result(
+                available=False,
+                reason="training_gap_unsupported",
+            )
+        )
+        reference = self.dataframe.loc[
+            self.dataframe["territory_id"].eq("ES-PROV-01")
+            & self.dataframe["month_id"].eq("2025-09"),
+            "overnight_stays_total",
+        ].iloc[0]
+
+        self.assertEqual(result.actual_model_used, FALLBACK_MODEL_ID)
+        self.assertTrue(result.fallback_used)
+        self.assertEqual(result.fallback_reason, "training_gap_unsupported")
+        self.assertEqual(result.baseline_reference_month_id, "2025-09")
+        self.assertEqual(result.baseline_prediction, reference)
+        self.assertEqual(result.predicted_overnight_stays_total, reference)
+        self.assertIn(
+            "availability_fallback_used",
+            {warning.code for warning in result.warnings},
+        )
+
+    def test_all_approved_unavailability_reasons_can_fallback(self) -> None:
+        for reason in (
+            "insufficient_history",
+            "training_gap_unsupported",
+            "fit_failure",
+            "invalid_forecast",
+        ):
+            with self.subTest(reason=reason):
+                result = self.predict_with(
+                    ets_result(available=False, reason=reason)
+                )
+                self.assertEqual(result.fallback_reason, reason)
+                self.assertTrue(result.fallback_used)
+
+    def test_expected_numerical_fit_failure_allows_availability_fallback(
+        self,
+    ) -> None:
+        with patch(
+            "src.models.ets_v2.ExponentialSmoothing",
+            side_effect=FloatingPointError("expected numerical failure"),
+        ):
+            result = predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe,
+                config=self.config,
+            )
+
+        self.assertEqual(result.actual_model_used, FALLBACK_MODEL_ID)
+        self.assertTrue(result.fallback_used)
+        self.assertEqual(result.fallback_reason, "fit_failure")
+
+    def test_unexpected_programming_defect_propagates_without_fallback(
+        self,
+    ) -> None:
+        with (
+            patch(
+                "src.models.ets_v2.ExponentialSmoothing",
+                side_effect=RuntimeError("simulated programming defect"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "programming defect"),
+        ):
+            predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe,
+                config=self.config,
+            )
+
+    def test_performance_based_fallback_configuration_is_rejected(self) -> None:
+        config = deepcopy(self.config)
+        config["operational_selection"]["fallback"][
+            "performance_based"
+        ] = True
 
         with self.assertRaisesRegex(
-            TerritorialReferenceGapError,
-            "gap territorial",
+            InferenceConfigurationError, "performance"
         ):
-            self._predict(dataframe)
-
-    def test_missing_reference_does_not_fall_back_to_adjacent_month(self) -> None:
-        dataframe = self.dataframe.loc[
-            ~(
-                self.dataframe["territory_id"].eq("ES-PROV-01")
-                & self.dataframe["month_id"].eq("2025-09")
+            self.predict_with(
+                ets_result(available=False, reason="fit_failure"),
+                config=config,
             )
-        ]
 
-        with self.assertRaises(TerritorialReferenceGapError):
-            self._predict(dataframe)
+    def test_unknown_ets_reason_does_not_route_to_baseline(self) -> None:
+        with self.assertRaisesRegex(
+            InferenceDataError, "no soportado"
+        ):
+            self.predict_with(
+                ets_result(available=False, reason="low_expected_skill")
+            )
 
-    def test_observed_zero_is_preserved(self) -> None:
+    def test_unavailable_ets_and_missing_lag12_fails_closed(self) -> None:
         dataframe = self.dataframe.copy()
-        reference_mask = (
+        reference = (
             dataframe["territory_id"].eq("ES-PROV-01")
             & dataframe["month_id"].eq("2025-09")
         )
-        dataframe.loc[reference_mask, "overnight_stays_total"] = 0.0
+        dataframe.loc[reference, "complete_month_available"] = False
+        dataframe.loc[reference, "overnight_stays_total"] = np.nan
 
-        result = self._predict(dataframe)
+        with self.assertRaisesRegex(MissingReferenceError, "lag-12"):
+            self.predict_with(
+                ets_result(
+                    available=False,
+                    reason="training_gap_unsupported",
+                ),
+                dataframe=dataframe,
+            )
 
-        self.assertEqual(result.predicted_overnight_stays_total, 0.0)
-
-    def test_provisional_reference_is_propagated_as_warning(self) -> None:
+    def test_available_ets_survives_missing_interval_scale(self) -> None:
         dataframe = self.dataframe.copy()
-        reference_mask = (
+        reference = (
             dataframe["territory_id"].eq("ES-PROV-01")
             & dataframe["month_id"].eq("2025-09")
         )
-        dataframe.loc[reference_mask, "is_provisional"] = True
+        dataframe.loc[reference, "complete_month_available"] = False
+        dataframe.loc[reference, "overnight_stays_total"] = np.nan
 
-        result = self._predict(dataframe)
+        result = self.predict_with(
+            ets_result(available=True),
+            dataframe=dataframe,
+        )
 
-        self.assertTrue(result.reference_is_provisional)
+        self.assertEqual(result.predicted_overnight_stays_total, 4321.5)
+        self.assertIsNone(result.baseline_prediction)
+        self.assertFalse(result.fallback_used)
+
+    def test_provisional_lag12_warning_only_when_fallback_uses_it(self) -> None:
+        dataframe = self.dataframe.copy()
+        reference = (
+            dataframe["territory_id"].eq("ES-PROV-01")
+            & dataframe["month_id"].eq("2025-09")
+        )
+        dataframe.loc[reference, "is_provisional"] = True
+        result = self.predict_with(
+            ets_result(available=False, reason="fit_failure"),
+            dataframe=dataframe,
+        )
+
+        self.assertTrue(result.baseline_reference_is_provisional)
         self.assertIn(
             "provisional_reference_data",
             {warning.code for warning in result.warnings},
         )
 
-    def test_mid_month_defines_an_operational_next_month_forecast(self) -> None:
-        result = self._predict()
-
-        self.assertEqual(result.target_month_id, "2026-09")
-        self.assertEqual(result.operational_status, "forecast_ready")
-        self.assertTrue(result.is_operational)
-
-    def test_last_day_of_month_still_targets_next_month(self) -> None:
-        result = self._predict(as_of_date="2026-08-31")
-
-        self.assertEqual(result.target_month_id, "2026-09")
-        self.assertEqual(result.reference_month_id, "2025-09")
-
-    def test_latest_available_month_is_context_not_forecast_origin(self) -> None:
-        result = self._predict(as_of_date="2026-08-13")
-
-        self.assertEqual(result.latest_available_month_id, "2026-05")
-        self.assertEqual(result.target_month_id, "2026-09")
-        self.assertTrue(result.is_operational)
-
-    def test_injected_as_of_date_controls_target(self) -> None:
-        august = self._predict(as_of_date="2026-08-13")
-        may = self._predict(as_of_date="2026-05-31")
-
-        self.assertEqual(august.target_month_id, "2026-09")
-        self.assertEqual(may.target_month_id, "2026-06")
-
-    def test_default_forecast_origin_uses_local_system_date(self) -> None:
-        with patch(
-            "src.models.inference._local_today",
-            return_value=date(2026, 8, 13),
+    def test_invalid_territory_is_blocking_before_fit(self) -> None:
+        with (
+            patch("src.models.inference.fit_ets_forecast") as fit,
+            self.assertRaisesRegex(InvalidTerritoryError, "ES-PROV-99"),
         ):
-            result = predict_next_month(
-                "ES-PROV-01",
+            predict_next_month(
+                "ES-PROV-99",
+                as_of_date="2026-08-20",
                 dataframe=self.dataframe,
                 config=self.config,
             )
+        fit.assert_not_called()
 
-        self.assertEqual(result.target_month_id, "2026-09")
-        self.assertEqual(result.reference_month_id, "2025-09")
-
-    def test_month_arithmetic_crosses_year_boundary(self) -> None:
-        result = self._predict(
-            as_of_date="2025-12-31",
-        )
-
-        self.assertEqual(result.target_month_id, "2026-01")
-        self.assertEqual(result.reference_month_id, "2025-01")
-        self.assertEqual(result.predicted_overnight_stays_total, 101.0)
-
-    def test_reference_lookup_ignores_time_within_month_start(self) -> None:
-        dataframe = self.dataframe.copy()
-        reference_mask = dataframe["month_id"].eq("2025-09")
-        dataframe.loc[reference_mask, "date_month"] += pd.Timedelta(hours=12)
-
-        result = self._predict(dataframe)
-
-        self.assertEqual(result.reference_month_id, "2025-09")
-        self.assertEqual(result.predicted_overnight_stays_total, 123.0)
-
-    def test_empty_dataset_is_blocking(self) -> None:
-        with self.assertRaises(EmptyInferenceDatasetError):
-            self._predict(self.dataframe.iloc[0:0])
-
-    def test_one_month_horizon_is_preserved(self) -> None:
-        result = self._predict(forecast_horizon_months=1)
-
-        self.assertEqual(result.forecast_horizon_months, 1)
-
-    def test_unsupported_horizon_is_blocking(self) -> None:
-        with self.assertRaisesRegex(UnsupportedHorizonError, "un mes"):
-            self._predict(forecast_horizon_months=2)
-
-    def test_missing_configuration_file_is_blocking(self) -> None:
-        with self.assertRaises(InferenceConfigurationError):
-            predict_next_month(
-                "ES-PROV-01",
-                dataframe=self.dataframe,
-                config_path=Path("configuration-that-does-not-exist.yml"),
-                as_of_date="2026-08-13",
-            )
-
-    def test_incompatible_baseline_configuration_is_blocking(self) -> None:
-        config = deepcopy(self.config)
-        config["baseline"]["name"] = "ridge"
-
-        with self.assertRaisesRegex(
-            InferenceConfigurationError,
-            "seasonal_naive_lag_12",
-        ):
-            predict_next_month(
-                "ES-PROV-01",
-                dataframe=self.dataframe,
-                config=config,
-                as_of_date="2026-08-13",
-            )
-
-    def test_incompatible_selected_solution_is_blocking(self) -> None:
-        config = deepcopy(self.config)
-        config["fallback"]["if_no_candidate_beats_baseline"][
-            "selected_solution"
-        ] = "ridge"
-
-        with self.assertRaisesRegex(
-            InferenceConfigurationError,
-            "solucion seleccionada",
-        ):
-            predict_next_month(
-                "ES-PROV-01",
-                dataframe=self.dataframe,
-                config=config,
-                as_of_date="2026-08-13",
-            )
-
-    def test_missing_required_column_is_blocking(self) -> None:
-        dataframe = self.dataframe.drop(columns="source_snapshot_id")
-
-        with self.assertRaisesRegex(InferenceDataError, "source_snapshot_id"):
-            self._predict(dataframe)
-
-    def test_duplicate_territory_month_key_is_blocking(self) -> None:
+    def test_duplicate_keys_are_blocking(self) -> None:
         dataframe = pd.concat(
             [self.dataframe, self.dataframe.iloc[[0]]],
             ignore_index=True,
         )
 
         with self.assertRaisesRegex(InferenceDataError, "duplicadas"):
-            self._predict(dataframe)
+            self.predict_with(ets_result(available=True), dataframe=dataframe)
 
-    def test_null_reference_value_is_blocking(self) -> None:
+    def test_invalid_lineage_is_blocking(self) -> None:
         dataframe = self.dataframe.copy()
-        reference_mask = (
-            dataframe["territory_id"].eq("ES-PROV-01")
-            & dataframe["month_id"].eq("2025-09")
-        )
-        dataframe.loc[reference_mask, "overnight_stays_total"] = None
-
-        with self.assertRaisesRegex(InferenceDataError, "nulo"):
-            self._predict(dataframe)
-
-    def test_invalid_numeric_reference_values_are_blocking(self) -> None:
-        invalid_values = [float("nan"), float("inf"), float("-inf"), -1.0]
-
-        for invalid_value in invalid_values:
-            with self.subTest(invalid_value=invalid_value):
-                dataframe = self.dataframe.copy()
-                reference_mask = (
-                    dataframe["territory_id"].eq("ES-PROV-01")
-                    & dataframe["month_id"].eq("2025-09")
-                )
-                dataframe.loc[
-                    reference_mask,
-                    "overnight_stays_total",
-                ] = invalid_value
-
-                with self.assertRaises(InferenceDataError):
-                    self._predict(dataframe)
-
-    def test_incompatible_lineage_values_are_blocking(self) -> None:
-        dataframe = self.dataframe.copy()
-        dataframe.loc[dataframe.index[0], "source_snapshot_id"] = "snapshot-002"
+        dataframe.loc[0, "source_snapshot_id"] = "another-snapshot"
 
         with self.assertRaisesRegex(InferenceDataError, "source_snapshot_id"):
-            self._predict(dataframe)
+            self.predict_with(ets_result(available=True), dataframe=dataframe)
 
-    def test_empty_lineage_values_are_blocking(self) -> None:
-        for column in (
-            "source_snapshot_id",
-            "pipeline_run_id",
-            "data_version",
-        ):
-            with self.subTest(column=column):
-                dataframe = self.dataframe.copy()
-                dataframe[column] = ""
+    def test_empty_dataset_and_unsupported_horizon_are_blocking(self) -> None:
+        with self.assertRaises(EmptyInferenceDatasetError):
+            predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                dataframe=self.dataframe.iloc[0:0],
+                config=self.config,
+            )
+        with self.assertRaises(UnsupportedHorizonError):
+            predict_next_month(
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+                forecast_horizon_months=2,
+                dataframe=self.dataframe,
+                config=self.config,
+            )
 
-                with self.assertRaisesRegex(InferenceDataError, column):
-                    self._predict(dataframe)
+    def test_source_loader_uses_v2_gold_not_evaluation_or_final_test(self) -> None:
+        with patch(
+            "src.models.inference.pd.read_parquet",
+            return_value=self.dataframe,
+        ) as reader:
+            loaded = load_inference_dataset(self.config)
 
-
-class TestInferenceIntegration(unittest.TestCase):
-    """Integracion segura con la Gold operacional versionada."""
-
-    def test_real_gold_supports_forecast_from_august_2026(self) -> None:
-        config = load_config()
-        gold = pd.read_parquet(config["source_dataset"]["path"])
-        reference_rows = gold.loc[
-            gold["month_id"].astype(str).eq("2025-09")
-            & gold["overnight_stays_total"].notna()
-        ].sort_values("territory_id")
-        self.assertFalse(reference_rows.empty)
-        reference = reference_rows.iloc[0]
-
-        result = predict_next_month(
-            str(reference["territory_id"]),
-            as_of_date="2026-08-13",
+        called_path = Path(reader.call_args.args[0])
+        self.assertEqual(
+            called_path,
+            Path(__file__).resolve().parents[1]
+            / self.config["source"]["path"],
         )
+        self.assertNotIn("model_outputs", str(called_path))
+        self.assertNotIn("test", called_path.name.lower())
+        self.assertEqual(len(loaded), len(self.dataframe))
+
+
+class TestOperationalInferenceIntegration(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.araba = predict_next_month(
+            "ES-PROV-01", as_of_date="2026-08-20"
+        )
+        cls.badajoz = predict_next_month(
+            "ES-PROV-06", as_of_date="2026-08-20"
+        )
+
+    def test_current_gold_araba_returns_finite_causal_ets(self) -> None:
+        result = self.araba
 
         self.assertEqual(result.target_month_id, "2026-09")
-        self.assertEqual(result.reference_month_id, "2025-09")
         self.assertEqual(result.latest_available_month_id, "2026-06")
-        self.assertNotEqual(
-            pd.Period(result.target_month_id, freq="M"),
-            pd.Period(result.latest_available_month_id, freq="M") + 1,
+        self.assertEqual(result.actual_model_used, SELECTED_MODEL_ID)
+        self.assertFalse(result.fallback_used)
+        self.assertTrue(np.isfinite(result.predicted_overnight_stays_total))
+        self.assertGreaterEqual(result.predicted_overnight_stays_total, 0)
+        self.assertLessEqual(
+            pd.Period(result.training_end, freq="M"),
+            pd.Period(result.latest_available_month_id, freq="M"),
         )
+
+    def test_current_gold_badajoz_is_structural_availability_fallback(self) -> None:
+        result = self.badajoz
+
+        self.assertEqual(result.target_month_id, "2026-09")
+        self.assertEqual(result.actual_model_used, FALLBACK_MODEL_ID)
+        self.assertTrue(result.fallback_used)
+        self.assertEqual(result.fallback_reason, "training_gap_unsupported")
         self.assertEqual(
             result.predicted_overnight_stays_total,
-            float(reference["overnight_stays_total"]),
+            result.baseline_prediction,
         )
-        self.assertEqual(result.operational_status, "forecast_ready")
-        self.assertTrue(result.is_operational)
+        self.assertTrue(np.isfinite(result.predicted_overnight_stays_total))
 
 
 if __name__ == "__main__":

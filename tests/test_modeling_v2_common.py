@@ -113,6 +113,58 @@ class TestModelingV2TemporalContract(unittest.TestCase):
             limitation["id"], "availability_correct_latest_vintage"
         )
 
+    def test_operational_selection_promotes_ets_provisionally_only(self) -> None:
+        selection = self.config["operational_selection"]
+
+        self.assertEqual(
+            selection["selected_model_id"],
+            "holt_winters_additive_damped_v1",
+        )
+        self.assertEqual(
+            selection["status"], "provisional_validation_champion"
+        )
+        self.assertEqual(
+            selection["evidence_scope"], "canonical_rolling_validation"
+        )
+        self.assertFalse(selection["independent_test_confirmed"])
+        self.assertEqual(
+            selection["fallback"],
+            {
+                "model_id": "seasonal_naive_lag_12",
+                "policy": "availability_only",
+                "performance_based": False,
+            },
+        )
+        self.assertEqual(
+            self.config["ets_candidate"]["screening_status"],
+            "passed_screening",
+        )
+
+    def test_operational_interval_is_separate_from_b3_interval(self) -> None:
+        baseline_interval = self.config["prediction_interval"]
+        operational = self.config["operational_prediction_interval"]
+
+        self.assertEqual(
+            baseline_interval["method_id"],
+            "prequential_scaled_absolute_residual_interval_v1",
+        )
+        self.assertEqual(
+            operational["method_id"],
+            "operational_prequential_scaled_absolute_residual_interval_v1",
+        )
+        self.assertNotEqual(
+            baseline_interval["method_id"], operational["method_id"]
+        )
+        self.assertEqual(
+            operational["score_prediction_column"],
+            "operational_prediction",
+        )
+        self.assertEqual(
+            operational["scale_column"], "baseline_prediction"
+        )
+        self.assertEqual(operational["nominal_level"], 0.8)
+        self.assertEqual(operational["minimum_calibration_origins"], 12)
+
 
 if __name__ == "__main__":
     unittest.main()

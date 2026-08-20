@@ -24,6 +24,17 @@ except ModuleNotFoundError:
     from modeling_v2_common import TemporalOrigin
 
 
+# En este punto config, shape e historia ya han superado sus contratos. Estas
+# son las unicas excepciones de ajuste/numericas que se convierten en una
+# indisponibilidad operacional; defectos de programacion deben propagarse.
+EXPECTED_ETS_FIT_EXCEPTIONS = (
+    FloatingPointError,
+    OverflowError,
+    np.linalg.LinAlgError,
+    ValueError,
+)
+
+
 @dataclass(frozen=True)
 class ETSTrainingSeries:
     """Serie mensual preparada sin acceder a observaciones futuras."""
@@ -329,7 +340,7 @@ def fit_ets_forecast(
         caught_messages = tuple(
             f"{item.category.__name__}: {item.message}" for item in caught
         )
-    except Exception as exc:
+    except EXPECTED_ETS_FIT_EXCEPTIONS as exc:
         elapsed = perf_counter() - started
         return _unavailable_forecast(
             territory_id=territory_id,

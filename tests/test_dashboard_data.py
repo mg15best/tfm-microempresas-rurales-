@@ -1,258 +1,436 @@
 import unittest
 
-from dataclasses import asdict
-from math import sqrt
+from copy import deepcopy
+from pathlib import Path
+import shutil
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
 
+from src.models.freeze_ets_v2_predictions import ARTIFACT_COLUMNS, KEY_COLUMNS
+from src.models.modeling_v2_common import load_modeling_v2_config
+from src.visualization import dashboard_data
 from src.visualization.dashboard_data import (
-    BaselineReplicaError,
+    BASELINE_ID,
+    CANONICAL_ARTIFACT_PATH,
+    CANONICAL_ARTIFACT_SHA256,
+    CANONICAL_GENERATOR_COMMIT,
+    CANONICAL_GITHUB_RUN_ID,
+    CANONICAL_LOGICAL_SHA256,
+    CANONICAL_METADATA_PATH,
+    CANONICAL_METADATA_SHA256,
+    CUTOFF_POLICY_ID,
     DashboardDataError,
+    EVIDENCE_SCOPE,
+    PREDICTION_COLUMN,
+    SELECTED_MODEL_ID,
+    CanonicalArtifactError,
     InvalidTerritoryError,
-    LineageMismatchError,
-    MetricsReconciliationError,
+    PreparedCanonicalValidation,
     build_dashboard_context,
+    calculate_operational_validation_metrics,
     calculate_territory_validation_metrics,
     get_territory_history,
     get_territory_validation_metrics,
-    load_official_validation_metrics,
-    load_validation_predictions,
-    prepare_baseline_validation_predictions,
-    reconcile_official_pooled_metrics,
-    validate_lineage_compatibility,
+    load_canonical_validation_bundle,
+    load_gold_history,
+    prepare_canonical_validation,
+    validate_b5_lifecycle,
 )
-from src.models.modeling_common import load_config
 
 
-class TestDashboardData(unittest.TestCase):
-    """Pruebas de datos historicos y metricas para presentacion."""
+class TestCanonicalValidationBundle(unittest.TestCase):
+    """Contrato fail-closed del artifact oficial B4C consumido por B5."""
 
-    def setUp(self) -> None:
-        self.config = {
-            "problem": {
-                "territory_level": "province",
-                "forecast_frequency": "monthly",
-                "forecast_horizon_months": 1,
-            },
-            "target": {
-                "source_column": "overnight_stays_total",
-            },
-            "source_dataset": {
-                "path": "data/gold/gold_tourism_demand_monthly.parquet",
-                "expected_territory_level": "province",
-            },
-            "modeling_dataset": {
-                "path": "data/gold/gold_modeling_dataset_monthly.parquet",
-                "forecast_horizon": 1,
-            },
-            "baseline": {
-                "name": "seasonal_naive_lag_12",
-                "prediction_feature": "lag_12_overnight_stays",
-            },
-            "fallback": {
-                "if_no_candidate_beats_baseline": {
-                    "selected_solution": "seasonal_naive_lag_12",
-                },
-            },
-            "validation": {
-                "folds": [
-                    {
-                        "name": "validation_1",
-                    },
-                ],
-            },
-        }
-        self.gold = self._build_gold()
-        self.predictions = self._build_predictions()
-        self.official_metrics = self._build_official_metrics()
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.config = load_modeling_v2_config()
+        cls.bundle = load_canonical_validation_bundle(cls.config)
 
-    @staticmethod
-    def _build_gold() -> pd.DataFrame:
-        return pd.DataFrame(
-            {
-                "territory_id": [
-                    "ES-PROV-01",
-                    "ES-PROV-01",
-                    "ES-PROV-01",
-                    "ES-PROV-02",
-                ],
-                "territory_name": [
-                    "Provincia A",
-                    "Provincia A",
-                    "Provincia A",
-                    "Provincia B",
-                ],
-                "month_id": ["2023-03", "2023-01", "2023-04", "2023-01"],
-                "date_month": pd.to_datetime(
-                    ["2023-03-01", "2023-01-01", "2023-04-01", "2023-01-01"]
-                ),
-                "overnight_stays_total": [130, 100, 140, 0],
-                "covid_period": [False, False, False, False],
-                "data_status": [
-                    "final_or_not_marked_provisional",
-                    "final_or_not_marked_provisional",
-                    "provisional",
-                    "final_or_not_marked_provisional",
-                ],
-                "is_provisional": [False, False, True, False],
-                "coverage_quality": "high",
-                "source_snapshot_id": "snapshot-001",
-                "pipeline_run_id": "gold-run-001",
-                "data_version": "gold-v1",
-            }
+    def _copy_bundle(self, root: Path) -> tuple[Path, Path]:
+        artifact = root / CANONICAL_ARTIFACT_PATH
+        metadata = root / CANONICAL_METADATA_PATH
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        metadata.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.bundle.artifact_path, artifact)
+        shutil.copy2(self.bundle.metadata_path, metadata)
+        return artifact, metadata
+
+    def test_loader_opens_exact_official_bundle(self) -> None:
+        bundle = self.bundle
+
+        self.assertEqual(bundle.artifact_sha256, CANONICAL_ARTIFACT_SHA256)
+        self.assertEqual(bundle.metadata_sha256, CANONICAL_METADATA_SHA256)
+        self.assertEqual(
+            bundle.logical_prediction_sha256,
+            CANONICAL_LOGICAL_SHA256,
+        )
+        self.assertEqual(bundle.generator_commit_sha, CANONICAL_GENERATOR_COMMIT)
+        self.assertEqual(bundle.github_run_id, CANONICAL_GITHUB_RUN_ID)
+        self.assertTrue(
+            bundle.metadata["artifact"]["official_canonical_artifact"]
+        )
+        self.assertEqual(
+            bundle.metadata["github"]["github_sha"],
+            bundle.generator_commit_sha,
         )
 
-    @staticmethod
-    def _build_predictions() -> pd.DataFrame:
-        observations = [
-            (
-                "ES-PROV-01",
-                "Provincia A",
-                "2023-01",
-                100.0,
-                90.0,
-            ),
-            (
-                "ES-PROV-01",
-                "Provincia A",
-                "2023-02",
-                200.0,
-                220.0,
-            ),
-            (
-                "ES-PROV-02",
-                "Provincia B",
-                "2023-01",
-                0.0,
-                0.0,
-            ),
-        ]
-        records: list[dict[str, object]] = []
-        for model in ("ridge_alpha_1", "hgb_raw_02"):
-            for (
-                territory_id,
-                territory_name,
-                month_id,
-                actual,
-                baseline,
-            ) in observations:
-                records.append(
-                    {
-                        "territory_id": territory_id,
-                        "territory_name": territory_name,
-                        "target_month_id": month_id,
-                        "target_date_month": pd.Timestamp(f"{month_id}-01"),
-                        "evaluation_split": "validation_1",
-                        "source_snapshot_id": "snapshot-001",
-                        "pipeline_run_id": "model-run-001",
-                        "data_version": "modeling-v1",
-                        "created_at": pd.Timestamp("2026-08-03", tz="UTC"),
-                        "model": model,
-                        "baseline_id": "seasonal_naive_lag_12",
-                        "dataset_path": (
-                            "data/gold/gold_modeling_dataset_monthly.parquet"
-                        ),
-                        "actual": actual,
-                        "baseline_prediction": baseline,
-                        "validation_start": "2023-01",
-                        "structural_train_end": "2022-12",
-                        "availability_train_end": "2022-10",
-                        "effective_train_end": "2022-10",
-                    }
+    def test_model_baseline_cutoff_and_panel_are_canonical(self) -> None:
+        predictions = self.bundle.predictions
+
+        self.assertEqual(self.bundle.selected_model_id, SELECTED_MODEL_ID)
+        self.assertEqual(self.bundle.baseline_id, BASELINE_ID)
+        self.assertEqual(self.bundle.cutoff_policy_id, CUTOFF_POLICY_ID)
+        self.assertEqual(list(predictions.columns), ARTIFACT_COLUMNS)
+        self.assertEqual(len(predictions), 1750)
+        self.assertEqual(predictions["territory_id"].nunique(), 50)
+        self.assertEqual(predictions["target_month_id"].nunique(), 35)
+        self.assertFalse(predictions.duplicated(KEY_COLUMNS).any())
+
+    def test_loader_does_not_require_git_directory(self) -> None:
+        with TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            self._copy_bundle(root)
+
+            loaded = load_canonical_validation_bundle(
+                self.config,
+                project_root=root,
+            )
+
+        self.assertEqual(loaded.artifact_sha256, CANONICAL_ARTIFACT_SHA256)
+        self.assertFalse((root / ".git").exists())
+
+    def test_parquet_with_same_schema_but_different_bytes_fails_closed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            artifact, _ = self._copy_bundle(root)
+            changed = self.bundle.predictions.copy()
+            changed.loc[0, PREDICTION_COLUMN] += 1.0
+            changed.to_parquet(
+                artifact,
+                engine="pyarrow",
+                compression="zstd",
+                index=False,
+            )
+
+            with self.assertRaisesRegex(CanonicalArtifactError, "SHA-256"):
+                load_canonical_validation_bundle(
+                    self.config,
+                    project_root=root,
                 )
-        return pd.DataFrame.from_records(records)
 
-    @staticmethod
-    def _build_official_metrics() -> pd.DataFrame:
-        return pd.DataFrame(
-            {
-                "evaluation_split": ["validation_pooled"],
-                "model": ["seasonal_naive_lag_12"],
-                "rows": [3],
-                "MAE": [10.0],
-                "RMSE": [sqrt(500.0 / 3.0)],
-                "WAPE_pct": [10.0],
-                "mean_bias": [10.0 / 3.0],
-            }
-        )
+    def test_corrupted_parquet_bytes_fail_closed(self) -> None:
+        with TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            artifact, _ = self._copy_bundle(root)
+            with artifact.open("ab") as stream:
+                stream.write(b"corruption")
 
-    def test_valid_territory_history_has_expected_columns(self) -> None:
-        history = get_territory_history(
-            "ES-PROV-01",
-            dataframe=self.gold,
-            config=self.config,
-        )
+            with self.assertRaisesRegex(CanonicalArtifactError, "SHA-256"):
+                load_canonical_validation_bundle(
+                    self.config,
+                    project_root=root,
+                )
+
+    def test_altered_metadata_fails_closed(self) -> None:
+        with TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            _, metadata = self._copy_bundle(root)
+            text = metadata.read_text(encoding="utf-8")
+            metadata.write_text(
+                text.replace(
+                    "official_canonical_artifact: true",
+                    "official_canonical_artifact: false",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(CanonicalArtifactError, "metadata"):
+                load_canonical_validation_bundle(
+                    self.config,
+                    project_root=root,
+                )
+
+    def test_metadata_parquet_incompatibility_is_rejected(self) -> None:
+        metadata = deepcopy(self.bundle.metadata)
+        metadata["invariants"]["rows"] = 1749
+
+        with self.assertRaisesRegex(
+            CanonicalArtifactError,
+            "invariantes",
+        ):
+            dashboard_data._validate_predictions(
+                self.bundle.predictions,
+                metadata,
+            )
+
+    def test_duplicate_keys_and_schema_drift_are_rejected(self) -> None:
+        duplicated = self.bundle.predictions.copy()
+        duplicated.loc[1, KEY_COLUMNS] = duplicated.loc[0, KEY_COLUMNS].to_numpy()
+        with self.assertRaisesRegex(CanonicalArtifactError, "duplicadas"):
+            dashboard_data._validate_predictions(
+                duplicated,
+                self.bundle.metadata,
+            )
+
+        drifted = self.bundle.predictions.drop(columns="clipping_applied")
+        with self.assertRaisesRegex(CanonicalArtifactError, "schema"):
+            dashboard_data._validate_predictions(
+                drifted,
+                self.bundle.metadata,
+            )
+
+    def test_config_cannot_repoint_the_official_hash(self) -> None:
+        changed = deepcopy(self.config)
+        changed["operational_selection"]["canonical_validation"][
+            "artifact_sha256"
+        ] = "0" * 64
+
+        with self.assertRaisesRegex(CanonicalArtifactError, "Anclaje"):
+            load_canonical_validation_bundle(changed)
+
+
+class TestCanonicalMetricsAndDashboard(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.config = load_modeling_v2_config()
+        cls.bundle = load_canonical_validation_bundle(cls.config)
+        cls.gold = load_gold_history(cls.config)
+        cls.prepared = prepare_canonical_validation(cls.bundle, cls.config)
+
+    def test_lifecycle_distinguishes_history_and_operation(self) -> None:
+        validate_b5_lifecycle(self.config)
 
         self.assertEqual(
-            history.columns.tolist(),
-            [
-                "territory_id",
-                "territory_name",
-                "month_id",
-                "date_month",
-                "overnight_stays_total",
-                "covid_period",
-                "data_status",
-                "is_provisional",
-                "coverage_quality",
-            ],
+            self.config["baseline"]["role"],
+            "historical_validation_baseline",
         )
-        self.assertEqual(len(history), 3)
+        self.assertEqual(
+            self.config["operational_selection"]["status"],
+            "provisional_validation_champion",
+        )
+        self.assertEqual(
+            self.config["ets_candidate"]["screening_status"],
+            "passed_screening",
+        )
+        self.assertFalse(
+            self.config["operational_selection"][
+                "independent_test_confirmed"
+            ]
+        )
+        fallback = self.config["operational_selection"]["fallback"]
+        self.assertEqual(fallback["model_id"], BASELINE_ID)
+        self.assertEqual(fallback["policy"], "availability_only")
+        self.assertFalse(fallback["performance_based"])
 
-    def test_invalid_territory_is_blocking(self) -> None:
+    def test_pooled_operational_metrics_match_canonical_evidence(self) -> None:
+        metrics = calculate_operational_validation_metrics(
+            self.bundle.predictions
+        )
+
+        self.assertEqual(metrics["n"], 1750)
+        self.assertAlmostEqual(metrics["MAE"], 4084.574535196216)
+        self.assertAlmostEqual(metrics["RMSE"], 7770.827125343509)
+        self.assertAlmostEqual(metrics["WAPE_pct"], 19.68924738072576)
+        self.assertAlmostEqual(metrics["bias"], -1862.1237643616084)
+
+    def test_territory_metrics_use_operational_prediction(self) -> None:
+        metrics = calculate_territory_validation_metrics(
+            self.bundle.predictions,
+            self.config,
+        )
+
+        self.assertEqual(len(metrics), 50)
+        self.assertEqual(metrics["validation_rows"].unique().tolist(), [35])
+        self.assertEqual(set(metrics["prediction_column"]), {PREDICTION_COLUMN})
+        self.assertEqual(set(metrics["selected_model_id"]), {SELECTED_MODEL_ID})
+        self.assertEqual(set(metrics["evidence_scope"]), {EVIDENCE_SCOPE})
+
+        araba_rows = self.bundle.predictions.loc[
+            self.bundle.predictions["territory_id"].eq("ES-PROV-01")
+        ]
+        expected_metrics = calculate_operational_validation_metrics(araba_rows)
+        araba = metrics.loc[
+            metrics["territory_id"].eq("ES-PROV-01")
+        ].iloc[0]
+        self.assertAlmostEqual(araba["validation_mae"], expected_metrics["MAE"])
+        self.assertAlmostEqual(
+            araba["validation_rmse"],
+            expected_metrics["RMSE"],
+        )
+        self.assertAlmostEqual(
+            araba["validation_bias"],
+            expected_metrics["bias"],
+        )
+        self.assertEqual(araba["validation_rows"], expected_metrics["n"])
+        expected = np.abs(
+            araba_rows[PREDICTION_COLUMN] - araba_rows["actual"]
+        ).sum() / np.abs(araba_rows["actual"]).sum() * 100
+        actual = metrics.loc[
+            metrics["territory_id"].eq("ES-PROV-01"),
+            "validation_wape_pct",
+        ].iloc[0]
+        self.assertAlmostEqual(actual, expected)
+
+    def test_prepared_metrics_cover_panel_and_public_boundary_is_closed(
+        self,
+    ) -> None:
+        self.assertEqual(len(self.prepared.territory_metrics), 50)
+        self.assertEqual(
+            get_territory_validation_metrics(
+                "ES-PROV-01",
+                evidence=self.prepared,
+                config=self.config,
+            ).territory_name,
+            "Araba/Álava",
+        )
+        with self.assertRaisesRegex(TypeError, "prepare_canonical_validation"):
+            PreparedCanonicalValidation()
+        with self.assertRaisesRegex(
+            CanonicalArtifactError,
+            "preparada",
+        ):
+            get_territory_validation_metrics(
+                "ES-PROV-01",
+                evidence=self.bundle,  # type: ignore[arg-type]
+                config=self.config,
+            )
+
+    def test_zero_wape_denominator_is_explicitly_nan(self) -> None:
+        metrics = calculate_operational_validation_metrics(
+            pd.DataFrame(
+                {
+                    "actual": [0.0, 0.0],
+                    PREDICTION_COLUMN: [0.0, 1.0],
+                }
+            )
+        )
+
+        self.assertTrue(np.isnan(metrics["WAPE_pct"]))
+        self.assertEqual(metrics["n"], 2)
+        self.assertAlmostEqual(metrics["MAE"], 0.5)
+        self.assertAlmostEqual(metrics["RMSE"], np.sqrt(0.5))
+        self.assertAlmostEqual(metrics["bias"], 0.5)
+
+    def test_badajoz_metrics_describe_selected_system_with_fallback(self) -> None:
+        metrics = calculate_territory_validation_metrics(
+            self.bundle.predictions,
+            self.config,
+        )
+        badajoz = metrics.loc[
+            metrics["territory_id"].eq("ES-PROV-06")
+        ].iloc[0]
+
+        self.assertEqual(badajoz["selected_model_id"], SELECTED_MODEL_ID)
+        self.assertEqual(badajoz["candidate_available_rows"], 0)
+        self.assertEqual(badajoz["availability_fallback_rows"], 35)
+        self.assertEqual(badajoz["prediction_column"], PREDICTION_COLUMN)
+
+    def test_dashboard_separates_operational_and_evaluation_lineages(self) -> None:
+        context = build_dashboard_context(
+            "ES-PROV-01",
+            history_months=24,
+            gold=self.gold,
+            canonical_bundle=self.bundle,
+            config=self.config,
+        )
+        lineage = context.lineage
+
+        self.assertEqual(context.territory_name, "Araba/Álava")
+        self.assertEqual(lineage.evaluation_scope, EVIDENCE_SCOPE)
+        self.assertEqual(
+            lineage.evaluation_artifact_sha256,
+            CANONICAL_ARTIFACT_SHA256,
+        )
+        self.assertEqual(
+            lineage.evaluation_logical_prediction_sha256,
+            CANONICAL_LOGICAL_SHA256,
+        )
+        self.assertTrue(lineage.operational_source_snapshot_id)
+        self.assertTrue(lineage.evaluation_source_snapshot_ids)
+        self.assertFalse(hasattr(lineage, "evaluation_pipeline_run_id"))
+        self.assertEqual(context.history["month_id"].iloc[0], "2024-07")
+        self.assertEqual(context.history["month_id"].iloc[-1], "2026-06")
+
+        newer = self.gold.copy()
+        newer["source_snapshot_id"] = "newer-operational-snapshot"
+        newer["pipeline_run_id"] = "newer-operational-run"
+        newer["data_version"] = "newer-operational-version"
+        newer_context = build_dashboard_context(
+            "ES-PROV-01",
+            gold=newer,
+            canonical_bundle=self.bundle,
+            config=self.config,
+        )
+        self.assertEqual(
+            newer_context.lineage.operational_source_snapshot_id,
+            "newer-operational-snapshot",
+        )
+        self.assertEqual(
+            newer_context.lineage.evaluation_source_snapshot_ids,
+            self.bundle.evaluation_source_snapshot_ids,
+        )
+
+    def test_invalid_territory_and_history_window_remain_blocking(self) -> None:
         with self.assertRaises(InvalidTerritoryError):
-            get_territory_history(
+            build_dashboard_context(
                 "ES-PROV-99",
+                gold=self.gold,
+                canonical_bundle=self.bundle,
+                config=self.config,
+            )
+        with self.assertRaises(ValueError):
+            get_territory_history(
+                "ES-PROV-01",
+                months=0,
                 dataframe=self.gold,
                 config=self.config,
             )
 
-    def test_history_is_chronological_and_month_limit_uses_latest(self) -> None:
-        history = get_territory_history(
-            "ES-PROV-01",
-            months=2,
-            dataframe=self.gold,
-            config=self.config,
-        )
-
-        self.assertEqual(history["month_id"].tolist(), ["2023-03", "2023-04"])
-
-    def test_month_limit_is_a_natural_month_window_with_gaps(self) -> None:
-        gold = self.gold.copy()
-        april = gold["month_id"].eq("2023-04")
-        gold.loc[april, "month_id"] = "2023-05"
-        gold.loc[april, "date_month"] = pd.Timestamp("2023-05-01")
+    def test_history_window_is_anchored_to_cutoff_and_preserves_gaps(self) -> None:
+        gold = self.gold.loc[
+            ~(
+                self.gold["territory_id"].astype(str).eq("ES-PROV-01")
+                & self.gold["month_id"].astype(str).eq("2022-10")
+            )
+        ].copy()
 
         history = get_territory_history(
             "ES-PROV-01",
-            months=2,
+            months=3,
+            latest_available_month_id="2022-11",
             dataframe=gold,
             config=self.config,
         )
 
-        self.assertEqual(history["month_id"].tolist(), ["2023-05"])
+        self.assertEqual(history["month_id"].astype(str).tolist(), [
+            "2022-09",
+            "2022-11",
+        ])
 
-    def test_invalid_month_limits_are_rejected(self) -> None:
-        for months in (0, -1, True, 1.5):
-            with self.subTest(months=months):
-                with self.assertRaises(ValueError):
-                    get_territory_history(
-                        "ES-PROV-01",
-                        months=months,
-                        dataframe=self.gold,
-                        config=self.config,
-                    )
-
-    def test_month_limit_larger_than_history_returns_all_rows(self) -> None:
+    def test_history_preserves_provisionality_from_gold(self) -> None:
         history = get_territory_history(
             "ES-PROV-01",
-            months=120,
+            latest_available_month_id="2026-06",
             dataframe=self.gold,
             config=self.config,
         )
+        source = self.gold.loc[
+            self.gold["territory_id"].astype(str).eq("ES-PROV-01")
+            & self.gold["month_id"].astype(str).eq("2026-06"),
+            "is_provisional",
+        ].iloc[0]
 
-        self.assertEqual(len(history), 3)
+        self.assertEqual(
+            history.loc[
+                history["month_id"].astype(str).eq("2026-06"),
+                "is_provisional",
+            ].iloc[0],
+            source,
+        )
 
     def test_empty_gold_is_blocking(self) -> None:
         with self.assertRaises(DashboardDataError):
@@ -263,7 +441,7 @@ class TestDashboardData(unittest.TestCase):
             )
 
     def test_duplicate_gold_territory_month_is_blocking(self) -> None:
-        gold = pd.concat(
+        duplicated = pd.concat(
             [self.gold, self.gold.iloc[[0]]],
             ignore_index=True,
         )
@@ -271,555 +449,9 @@ class TestDashboardData(unittest.TestCase):
         with self.assertRaisesRegex(DashboardDataError, "duplicadas"):
             get_territory_history(
                 "ES-PROV-01",
-                dataframe=gold,
+                dataframe=duplicated,
                 config=self.config,
             )
-
-    def test_history_preserves_provisionality(self) -> None:
-        history = get_territory_history(
-            "ES-PROV-01",
-            dataframe=self.gold,
-            config=self.config,
-        )
-
-        self.assertEqual(history["is_provisional"].tolist(), [False, False, True])
-        self.assertEqual(history.iloc[-1]["data_status"], "provisional")
-
-    def test_history_does_not_impute_missing_months(self) -> None:
-        history = get_territory_history(
-            "ES-PROV-01",
-            dataframe=self.gold,
-            config=self.config,
-        )
-
-        self.assertEqual(
-            history["month_id"].tolist(),
-            ["2023-01", "2023-03", "2023-04"],
-        )
-        self.assertNotIn("2023-02", history["month_id"].tolist())
-
-    def test_baseline_replicas_are_identified_by_candidate(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        self.assertEqual(len(self.predictions), 6)
-        self.assertEqual(len(unique), 3)
-        self.assertEqual(
-            set(self.predictions["model"]),
-            {"ridge_alpha_1", "hgb_raw_02"},
-        )
-        self.assertNotIn("model", unique.columns)
-
-    def test_candidate_order_does_not_change_deduplicated_baseline(self) -> None:
-        first = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-        reversed_predictions = self.predictions.iloc[::-1].reset_index(drop=True)
-        second = prepare_baseline_validation_predictions(
-            reversed_predictions,
-            self.config,
-        )
-
-        pd.testing.assert_frame_equal(first, second)
-        self.assertNotIn("model", first.columns)
-
-    def test_different_baseline_replica_is_blocking(self) -> None:
-        predictions = self.predictions.copy()
-        mask = (
-            predictions["model"].eq("hgb_raw_02")
-            & predictions["territory_id"].eq("ES-PROV-01")
-            & predictions["target_month_id"].eq("2023-01")
-        )
-        predictions.loc[mask, "baseline_prediction"] = 91.0
-
-        with self.assertRaisesRegex(
-            BaselineReplicaError,
-            "baseline_prediction",
-        ):
-            prepare_baseline_validation_predictions(
-                predictions,
-                self.config,
-            )
-
-    def test_missing_candidate_replica_is_blocking(self) -> None:
-        predictions = self.predictions.drop(index=self.predictions.index[-1])
-
-        with self.assertRaisesRegex(BaselineReplicaError, "candidatos"):
-            prepare_baseline_validation_predictions(
-                predictions,
-                self.config,
-            )
-
-    def test_duplicate_observation_candidate_is_blocking(self) -> None:
-        predictions = pd.concat(
-            [self.predictions, self.predictions.iloc[[0]]],
-            ignore_index=True,
-        )
-
-        with self.assertRaisesRegex(BaselineReplicaError, "candidato"):
-            prepare_baseline_validation_predictions(
-                predictions,
-                self.config,
-            )
-
-    def test_invalid_actual_or_prediction_is_blocking(self) -> None:
-        invalid_values = [float("nan"), float("inf"), float("-inf"), -1.0]
-
-        for column in ("actual", "baseline_prediction"):
-            for value in invalid_values:
-                with self.subTest(column=column, value=value):
-                    predictions = self.predictions.copy()
-                    logical_observation = (
-                        predictions["territory_id"].eq("ES-PROV-01")
-                        & predictions["target_month_id"].eq("2023-01")
-                    )
-                    predictions.loc[logical_observation, column] = value
-
-                    with self.assertRaises(BaselineReplicaError):
-                        prepare_baseline_validation_predictions(
-                            predictions,
-                            self.config,
-                        )
-
-    def test_unique_validation_lineage_is_accepted(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        self.assertEqual(
-            unique["source_snapshot_id"].unique().tolist(),
-            ["snapshot-001"],
-        )
-
-    def test_multiple_validation_lineage_is_blocking(self) -> None:
-        for column in (
-            "source_snapshot_id",
-            "pipeline_run_id",
-            "data_version",
-        ):
-            with self.subTest(column=column):
-                predictions = self.predictions.copy()
-                territory = predictions["territory_id"].eq("ES-PROV-02")
-                predictions.loc[territory, column] = "incompatible-value"
-
-                with self.assertRaises(LineageMismatchError):
-                    calculate_territory_validation_metrics(
-                        predictions,
-                        self.config,
-                    )
-
-    def test_empty_or_null_validation_lineage_is_blocking(self) -> None:
-        for column in (
-            "source_snapshot_id",
-            "pipeline_run_id",
-            "data_version",
-        ):
-            for value in ("", None):
-                with self.subTest(column=column, value=value):
-                    predictions = self.predictions.copy()
-                    predictions[column] = value
-
-                    with self.assertRaises(LineageMismatchError):
-                        get_territory_validation_metrics(
-                            "ES-PROV-01",
-                            dataframe=predictions,
-                            config=self.config,
-                        )
-
-    def test_territory_mae_is_correct(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-01",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertAlmostEqual(metrics.validation_mae, 15.0)
-
-    def test_territory_rmse_is_correct(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-01",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertAlmostEqual(metrics.validation_rmse, sqrt(250.0))
-
-    def test_territory_wape_is_correct(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-01",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertAlmostEqual(metrics.validation_wape_pct, 10.0)
-
-    def test_territory_bias_is_correct(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-01",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertAlmostEqual(metrics.validation_bias, 5.0)
-
-    def test_territory_sample_size_is_correct(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-01",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertEqual(metrics.validation_rows, 2)
-
-    def test_metrics_are_calculated_once_per_territory(self) -> None:
-        metrics = calculate_territory_validation_metrics(
-            self.predictions,
-            self.config,
-        )
-
-        self.assertEqual(metrics["territory_id"].tolist(), ["ES-PROV-01", "ES-PROV-02"])
-        self.assertFalse(metrics["territory_id"].duplicated().any())
-
-    def test_territory_without_predictions_is_blocking(self) -> None:
-        with self.assertRaisesRegex(InvalidTerritoryError, "evaluables"):
-            get_territory_validation_metrics(
-                "ES-PROV-99",
-                dataframe=self.predictions,
-                config=self.config,
-            )
-
-    def test_zero_wape_denominator_returns_nan(self) -> None:
-        metrics = get_territory_validation_metrics(
-            "ES-PROV-02",
-            dataframe=self.predictions,
-            config=self.config,
-        )
-
-        self.assertTrue(np.isnan(metrics.validation_wape_pct))
-        self.assertEqual(metrics.validation_rows, 1)
-
-    def test_official_metrics_are_reconciled(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        calculated = reconcile_official_pooled_metrics(
-            unique,
-            self.official_metrics,
-            self.config,
-        )
-
-        self.assertEqual(calculated["rows"], 3)
-        self.assertAlmostEqual(calculated["WAPE_pct"], 10.0)
-
-    def test_official_metrics_mismatch_is_blocking(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-        official = self.official_metrics.copy()
-        official.loc[0, "MAE"] = 999.0
-
-        with self.assertRaises(MetricsReconciliationError):
-            reconcile_official_pooled_metrics(
-                unique,
-                official,
-                self.config,
-            )
-
-    def test_compatible_lineage_is_returned(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        lineage = validate_lineage_compatibility(
-            self.gold,
-            unique,
-            self.config,
-        )
-
-        self.assertEqual(
-            lineage.operational_source_snapshot_id,
-            "snapshot-001",
-        )
-        self.assertEqual(
-            lineage.operational_pipeline_run_id,
-            "gold-run-001",
-        )
-        self.assertEqual(
-            lineage.evaluation_source_snapshot_id,
-            "snapshot-001",
-        )
-        self.assertEqual(
-            lineage.evaluation_pipeline_run_id,
-            "model-run-001",
-        )
-
-    def test_different_operational_and_evaluation_snapshots_are_valid(self) -> None:
-        gold = self.gold.copy()
-        gold["source_snapshot_id"] = "snapshot-002"
-
-        context = build_dashboard_context(
-            "ES-PROV-01",
-            gold=gold,
-            predictions=self.predictions,
-            official_metrics=self.official_metrics,
-            config=self.config,
-        )
-
-        self.assertEqual(
-            context.lineage.operational_source_snapshot_id,
-            "snapshot-002",
-        )
-        self.assertEqual(
-            context.lineage.evaluation_source_snapshot_id,
-            "snapshot-001",
-        )
-
-    def test_mixed_operational_gold_lineage_is_blocking(self) -> None:
-        gold = self.gold.copy()
-        gold.loc[gold.index[0], "source_snapshot_id"] = "snapshot-002"
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        with self.assertRaisesRegex(
-            LineageMismatchError,
-            "source_snapshot_id",
-        ):
-            validate_lineage_compatibility(gold, unique, self.config)
-
-    def test_context_is_exportable_as_simple_tables(self) -> None:
-        context = build_dashboard_context(
-            "ES-PROV-01",
-            gold=self.gold,
-            predictions=self.predictions,
-            official_metrics=self.official_metrics,
-            config=self.config,
-        )
-
-        export = context.to_export_frames()
-
-        self.assertEqual(
-            set(export),
-            {"history", "validation_metrics", "lineage"},
-        )
-        self.assertEqual(len(export["validation_metrics"]), 1)
-        self.assertEqual(
-            asdict(context.validation_metrics)["validation_rows"],
-            2,
-        )
-
-    def test_context_rejects_inconsistent_territory_name(self) -> None:
-        gold = self.gold.copy()
-        gold.loc[
-            gold["territory_id"].eq("ES-PROV-01"),
-            "territory_name",
-        ] = "Nombre diferente"
-
-        with self.assertRaisesRegex(DashboardDataError, "nombre territorial"):
-            build_dashboard_context(
-                "ES-PROV-01",
-                gold=gold,
-                predictions=self.predictions,
-                official_metrics=self.official_metrics,
-                config=self.config,
-            )
-
-    def test_incompatible_selected_solution_is_blocking(self) -> None:
-        config = dict(self.config)
-        config["fallback"] = {
-            "if_no_candidate_beats_baseline": {
-                "selected_solution": "ridge",
-            },
-        }
-
-        with self.assertRaises(DashboardDataError):
-            prepare_baseline_validation_predictions(
-                self.predictions,
-                config,
-            )
-
-    def test_incompatible_forecast_horizon_is_blocking(self) -> None:
-        config = dict(self.config)
-        config["problem"] = dict(self.config["problem"])
-        config["problem"]["forecast_horizon_months"] = 2
-
-        with self.assertRaisesRegex(DashboardDataError, "horizonte uno"):
-            prepare_baseline_validation_predictions(
-                self.predictions,
-                config,
-            )
-
-    def test_non_operational_baseline_and_selection_are_blocking(self) -> None:
-        config = dict(self.config)
-        config["baseline"] = {"name": "ridge"}
-        config["fallback"] = {
-            "if_no_candidate_beats_baseline": {
-                "selected_solution": "ridge",
-            },
-        }
-        predictions = self.predictions.copy()
-        predictions["baseline_id"] = "ridge"
-
-        with self.assertRaises(DashboardDataError):
-            prepare_baseline_validation_predictions(
-                predictions,
-                config,
-            )
-
-
-class TestDashboardDataIntegration(unittest.TestCase):
-    """Integracion con los artefactos versionados vigentes."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.config = load_config()
-        source_path = cls.config["source_dataset"]["path"]
-        cls.gold = pd.read_parquet(source_path)
-        cls.predictions = load_validation_predictions()
-        cls.official = load_official_validation_metrics()
-
-    def test_real_baseline_replication_contract(self) -> None:
-        key = [
-            "territory_id",
-            "target_month_id",
-            "evaluation_split",
-        ]
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-        replica_counts = self.predictions.groupby(key).size()
-
-        self.assertEqual(len(self.predictions), 12_250)
-        self.assertEqual(len(unique), 1_750)
-        self.assertEqual(replica_counts.unique().tolist(), [7])
-        self.assertEqual(self.predictions["model"].nunique(), 7)
-        self.assertNotIn("model", unique.columns)
-
-    def test_real_baseline_reproduces_official_pooled_metrics(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-
-        calculated = reconcile_official_pooled_metrics(
-            unique,
-            self.official,
-            self.config,
-        )
-
-        official = self.official.loc[
-            self.official["evaluation_split"].eq("validation_pooled")
-            & self.official["model"].eq("seasonal_naive_lag_12")
-        ].iloc[0]
-        self.assertEqual(calculated["rows"], int(official["rows"]))
-        for column in ("MAE", "RMSE", "WAPE_pct", "mean_bias"):
-            self.assertAlmostEqual(
-                calculated[column],
-                float(official[column]),
-                delta=1e-6,
-            )
-
-    def test_real_territory_metrics_cover_expected_panel(self) -> None:
-        metrics = calculate_territory_validation_metrics(
-            self.predictions,
-            self.config,
-        )
-
-        self.assertEqual(len(metrics), 50)
-        self.assertEqual(metrics["validation_rows"].unique().tolist(), [35])
-        self.assertFalse(metrics["territory_id"].duplicated().any())
-
-    def test_newer_operational_gold_keeps_evaluation_provenance(self) -> None:
-        unique = prepare_baseline_validation_predictions(
-            self.predictions,
-            self.config,
-        )
-        territory_id = str(sorted(self.gold["territory_id"].unique())[0])
-        context = build_dashboard_context(
-            territory_id,
-            gold=self.gold,
-            predictions=self.predictions,
-            official_metrics=self.official,
-            config=self.config,
-        )
-        lineage = context.lineage
-
-        for dataframe in (self.gold, unique):
-            for column in (
-                "source_snapshot_id",
-                "pipeline_run_id",
-                "data_version",
-            ):
-                values = dataframe[column].astype(str)
-                self.assertFalse(dataframe[column].isna().any())
-                self.assertFalse(values.str.strip().eq("").any())
-                self.assertEqual(values.nunique(), 1)
-
-        self.assertEqual(
-            lineage.operational_source_snapshot_id,
-            self.gold["source_snapshot_id"].iloc[0],
-        )
-        self.assertEqual(
-            lineage.evaluation_source_snapshot_id,
-            unique["source_snapshot_id"].iloc[0],
-        )
-        self.assertTrue(lineage.operational_source_snapshot_id.strip())
-        self.assertTrue(lineage.evaluation_source_snapshot_id.strip())
-        self.assertNotEqual(
-            lineage.operational_source_snapshot_id,
-            lineage.evaluation_source_snapshot_id,
-        )
-        self.assertEqual(
-            lineage.operational_pipeline_run_id,
-            self.gold["pipeline_run_id"].iloc[0],
-        )
-        self.assertEqual(
-            lineage.operational_data_version,
-            self.gold["data_version"].iloc[0],
-        )
-        self.assertEqual(
-            lineage.evaluation_pipeline_run_id,
-            unique["pipeline_run_id"].iloc[0],
-        )
-        self.assertEqual(
-            lineage.evaluation_data_version,
-            unique["data_version"].iloc[0],
-        )
-
-        gold_name = self.gold.loc[
-            self.gold["territory_id"].astype(str).eq(territory_id),
-            "territory_name",
-        ].iloc[0]
-        evaluation_name = unique.loc[
-            unique["territory_id"].astype(str).eq(territory_id),
-            "territory_name",
-        ].iloc[0]
-        self.assertEqual(context.territory_name, gold_name)
-        self.assertEqual(context.territory_name, evaluation_name)
-
-        baseline_id = self.config["baseline"]["name"]
-        selected_solution = self.config["fallback"][
-            "if_no_candidate_beats_baseline"
-        ]["selected_solution"]
-        self.assertEqual(baseline_id, "seasonal_naive_lag_12")
-        self.assertEqual(selected_solution, baseline_id)
-
-        calculated = reconcile_official_pooled_metrics(
-            unique,
-            self.official,
-            self.config,
-        )
-        self.assertEqual(calculated["rows"], 1_750)
 
 
 if __name__ == "__main__":

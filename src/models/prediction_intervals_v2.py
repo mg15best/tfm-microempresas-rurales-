@@ -529,3 +529,425 @@ def build_current_baseline_intervals(
             record["normalized_width"] = np.nan
         rows.append(record)
     return pd.DataFrame(rows).sort_values("territory_id", ignore_index=True)
+
+
+# ---------------------------------------------------------------------------
+# Intervalo operacional B5. Estas funciones son deliberadamente separadas de
+# B3: el point es operational_prediction y el baseline es solo una escala.
+# ---------------------------------------------------------------------------
+
+OPERATIONAL_INTERVAL_METHOD_ID = (
+    "operational_prequential_scaled_absolute_residual_interval_v1"
+)
+OPERATIONAL_ARTIFACT_PATH = (
+    "data/model_outputs/ets_v2_rolling_validation_predictions.parquet"
+)
+
+
+def validate_operational_interval_config(
+    interval_config: Mapping[str, Any],
+) -> None:
+    """Congela la unica especificacion de intervalo operacional B5."""
+
+    expected = {
+        "method_id": OPERATIONAL_INTERVAL_METHOD_ID,
+        "nominal_level": 0.80,
+        "alpha": 0.20,
+        "minimum_calibration_origins": 12,
+        "calibration_scope": "pooled_territories_expanding_origins",
+        "score_prediction_column": "operational_prediction",
+        "scale_column": "baseline_prediction",
+        "source_artifact": OPERATIONAL_ARTIFACT_PATH,
+        "quantile_method": "finite_sample_order_statistic",
+        "lower_bound": 0,
+        "transversal_dependence_limitation": True,
+        "exact_iid_coverage_guarantee": False,
+    }
+    mismatches = {
+        key: (interval_config.get(key), expected_value)
+        for key, expected_value in expected.items()
+        if interval_config.get(key) != expected_value
+    }
+    if mismatches:
+        raise ValueError(
+            f"Configuracion de intervalo operacional no soportada: {mismatches}"
+        )
+
+
+def build_operational_score_bank(
+    canonical_predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Construye el banco B5 solo desde predicciones operacionales canónicas."""
+
+    required = {
+        "territory_id",
+        "target_month_id",
+        "latest_available_month_id",
+        "actual",
+        "baseline_prediction",
+        "operational_prediction",
+    }
+    missing = sorted(required.difference(canonical_predictions.columns))
+    if missing:
+        raise ValueError(
+            "Artifact operacional sin columnas: " + ", ".join(missing)
+        )
+    bank = canonical_predictions.copy()
+    if bank.empty:
+        raise ValueError("Artifact operacional vacio.")
+    keys = ["territory_id", "target_month_id"]
+    if bank.duplicated(keys).any():
+        raise ValueError("Artifact operacional contiene keys duplicadas.")
+
+    try:
+        targets = pd.PeriodIndex(bank["target_month_id"], freq="M")
+        cutoffs = pd.PeriodIndex(
+            bank["latest_available_month_id"], freq="M"
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "Artifact operacional contiene meses no validos."
+        ) from error
+    if (cutoffs >= targets).any():
+        raise ValueError(
+            "latest_available_month_id debe preceder al target operacional."
+        )
+
+    numeric_columns = [
+        "actual",
+        "baseline_prediction",
+        "operational_prediction",
+    ]
+    for column in numeric_columns:
+        bank[column] = pd.to_numeric(bank[column], errors="coerce")
+        values = bank[column]
+        if (
+            values.isna().any()
+            or not np.isfinite(values).all()
+            or values.lt(0).any()
+        ):
+            raise ValueError(
+                f"Artifact operacional contiene {column} invalido."
+            )
+
+    bank["score"] = (
+        (bank["actual"] - bank["operational_prediction"]).abs()
+        / bank["baseline_prediction"].clip(lower=1)
+    )
+    if not np.isfinite(bank["score"]).all() or bank["score"].lt(0).any():
+        raise AssertionError("El banco operacional genero scores invalidos.")
+    bank["score_prediction_column"] = "operational_prediction"
+    bank["scale_column"] = "baseline_prediction"
+    bank["interval_method_id"] = OPERATIONAL_INTERVAL_METHOD_ID
+    return bank.sort_values(keys[::-1], ignore_index=True)
+
+
+def eligible_operational_calibration_scores(
+    score_bank: pd.DataFrame,
+    *,
+    latest_available_month_id: str,
+) -> pd.DataFrame:
+    """Excluye todo residual cuyo actual aun no seria conocido en el cutoff."""
+
+    required = {
+        "territory_id",
+        "target_month_id",
+        "score",
+        "score_prediction_column",
+        "scale_column",
+        "interval_method_id",
+    }
+    missing = sorted(required.difference(score_bank.columns))
+    if missing:
+        raise ValueError("Banco operacional sin columnas: " + ", ".join(missing))
+    if set(score_bank["score_prediction_column"].astype(str)) != {
+        "operational_prediction"
+    }:
+        raise ValueError("El score operacional no usa operational_prediction.")
+    if set(score_bank["scale_column"].astype(str)) != {
+        "baseline_prediction"
+    }:
+        raise ValueError("La escala operacional no usa baseline_prediction.")
+    if set(score_bank["interval_method_id"].astype(str)) != {
+        OPERATIONAL_INTERVAL_METHOD_ID
+    }:
+        raise ValueError("El banco no pertenece al metodo operacional B5.")
+
+    cutoff = pd.Period(latest_available_month_id, freq="M")
+    targets = pd.PeriodIndex(score_bank["target_month_id"], freq="M")
+    scores = pd.to_numeric(score_bank["score"], errors="coerce")
+    eligible = score_bank.loc[
+        (targets <= cutoff)
+        & scores.notna()
+        & np.isfinite(scores)
+        & scores.ge(0)
+    ].copy()
+    if not eligible.empty:
+        maximum = pd.Period(
+            eligible["target_month_id"].max(), freq="M"
+        )
+        if maximum > cutoff:
+            raise AssertionError(
+                "La calibracion operacional accedio a un residual futuro."
+            )
+    return eligible.sort_values(
+        ["target_month_id", "territory_id"], ignore_index=True
+    )
+
+
+def _summarize_operational_calibration(
+    score_bank: pd.DataFrame,
+    *,
+    latest_available_month_id: str,
+    interval_config: Mapping[str, Any],
+) -> _CalibrationSummary:
+    validate_operational_interval_config(interval_config)
+    eligible = eligible_operational_calibration_scores(
+        score_bank,
+        latest_available_month_id=latest_available_month_id,
+    )
+    origins_n = int(eligible["target_month_id"].nunique())
+    scores_n = int(len(eligible))
+    maximum = (
+        str(eligible["target_month_id"].max())
+        if not eligible.empty
+        else None
+    )
+    if origins_n < int(interval_config["minimum_calibration_origins"]):
+        return _CalibrationSummary(
+            scores_n,
+            origins_n,
+            maximum,
+            None,
+            "insufficient_calibration_origins",
+        )
+    quantile, _ = finite_sample_order_quantile(
+        eligible["score"], float(interval_config["nominal_level"])
+    )
+    return _CalibrationSummary(
+        scores_n, origins_n, maximum, quantile, None
+    )
+
+
+def _operational_interval_from_summary(
+    *,
+    territory_id: str,
+    target_month_id: str,
+    point_prediction: float,
+    baseline_prediction: float | None,
+    interval_config: Mapping[str, Any],
+    calibration: _CalibrationSummary,
+) -> PredictionIntervalResult:
+    point = float(point_prediction)
+    level = float(interval_config["nominal_level"])
+    method_id = str(interval_config["method_id"])
+    if not np.isfinite(point) or point < 0:
+        raise ValueError("El point operacional debe ser finito y no negativo.")
+    if baseline_prediction is None or pd.isna(baseline_prediction):
+        return PredictionIntervalResult(
+            str(territory_id), str(target_month_id), point,
+            None, None, level, method_id,
+            calibration.scores_n, calibration.origins_n,
+            calibration.maximum_target_month_id, calibration.quantile,
+            False, "missing_interval_scale",
+        )
+    scale = float(baseline_prediction)
+    if not np.isfinite(scale) or scale < 0:
+        raise ValueError(
+            "baseline_prediction debe ser finita y no negativa cuando existe."
+        )
+    if calibration.unavailable_reason is not None:
+        return PredictionIntervalResult(
+            str(territory_id), str(target_month_id), point,
+            None, None, level, method_id,
+            calibration.scores_n, calibration.origins_n,
+            calibration.maximum_target_month_id, None,
+            False, calibration.unavailable_reason,
+        )
+    if calibration.quantile is None:
+        raise AssertionError("Calibracion operacional disponible sin cuantil.")
+
+    margin = calibration.quantile * max(scale, 1.0)
+    lower = max(float(interval_config["lower_bound"]), point - margin)
+    upper = point + margin
+    if not lower <= point <= upper or lower < 0:
+        raise AssertionError("Intervalo operacional invalido.")
+    return PredictionIntervalResult(
+        str(territory_id), str(target_month_id), point,
+        float(lower), float(upper), level, method_id,
+        calibration.scores_n, calibration.origins_n,
+        calibration.maximum_target_month_id, calibration.quantile,
+        True, None,
+    )
+
+
+def calculate_current_operational_interval(
+    *,
+    territory_id: str,
+    target_month_id: str,
+    point_prediction: float,
+    baseline_prediction: float | None,
+    origin: TemporalOrigin,
+    score_bank: pd.DataFrame,
+    interval_config: Mapping[str, Any],
+) -> PredictionIntervalResult:
+    """Calcula el intervalo B5 actual sin invalidar un point ETS valido."""
+
+    validate_operational_interval_config(interval_config)
+    if str(target_month_id) != origin.target_month_id:
+        raise ValueError("El target operacional no coincide con el origin.")
+    calibration = _summarize_operational_calibration(
+        score_bank,
+        latest_available_month_id=origin.latest_available_month_id,
+        interval_config=interval_config,
+    )
+    return _operational_interval_from_summary(
+        territory_id=territory_id,
+        target_month_id=target_month_id,
+        point_prediction=point_prediction,
+        baseline_prediction=baseline_prediction,
+        interval_config=interval_config,
+        calibration=calibration,
+    )
+
+
+def apply_operational_prequential_intervals(
+    canonical_predictions: pd.DataFrame,
+    interval_config: Mapping[str, Any],
+) -> pd.DataFrame:
+    """Aplica read-only la calibracion expanding al artifact canonico B5."""
+
+    validate_operational_interval_config(interval_config)
+    score_bank = build_operational_score_bank(canonical_predictions)
+    calibration_cache: dict[str, _CalibrationSummary] = {}
+    records: list[dict[str, Any]] = []
+    for row in score_bank.itertuples(index=False):
+        latest_available = str(row.latest_available_month_id)
+        if latest_available not in calibration_cache:
+            calibration_cache[latest_available] = (
+                _summarize_operational_calibration(
+                    score_bank,
+                    latest_available_month_id=latest_available,
+                    interval_config=interval_config,
+                )
+            )
+        interval = _operational_interval_from_summary(
+            territory_id=str(row.territory_id),
+            target_month_id=str(row.target_month_id),
+            point_prediction=float(row.operational_prediction),
+            baseline_prediction=float(row.baseline_prediction),
+            interval_config=interval_config,
+            calibration=calibration_cache[latest_available],
+        )
+        records.append(asdict(interval))
+
+    intervals = pd.DataFrame.from_records(records)
+    keys = ["territory_id", "target_month_id"]
+    enriched = canonical_predictions.merge(
+        intervals,
+        on=keys,
+        how="left",
+        validate="one_to_one",
+    )
+    if not np.allclose(
+        enriched["operational_prediction"],
+        enriched["point_prediction"],
+        rtol=0,
+        atol=1e-12,
+    ):
+        raise AssertionError("El intervalo B5 modifico un point operacional.")
+
+    available = enriched["interval_available"].fillna(False).astype(bool)
+    enriched["covered"] = False
+    enriched["miss_below"] = False
+    enriched["miss_above"] = False
+    enriched["width"] = np.nan
+    enriched["normalized_width"] = np.nan
+    enriched["interval_score"] = np.nan
+    if available.any():
+        actual = enriched.loc[available, "actual"]
+        lower = enriched.loc[available, "lower"]
+        upper = enriched.loc[available, "upper"]
+        enriched.loc[available, "covered"] = actual.ge(lower) & actual.le(upper)
+        enriched.loc[available, "miss_below"] = actual.lt(lower)
+        enriched.loc[available, "miss_above"] = actual.gt(upper)
+        enriched.loc[available, "width"] = upper - lower
+        enriched.loc[available, "normalized_width"] = (
+            enriched.loc[available, "width"]
+            / enriched.loc[available, "point_prediction"].clip(lower=1)
+        )
+        alpha = float(interval_config["alpha"])
+        enriched.loc[available, "interval_score"] = [
+            calculate_interval_score(actual_value, lower_value, upper_value, alpha)
+            for actual_value, lower_value, upper_value in zip(actual, lower, upper)
+        ]
+
+    calibration_max = enriched.loc[
+        available, "calibration_max_target_month_id"
+    ]
+    if not calibration_max.empty:
+        maximum = pd.PeriodIndex(calibration_max, freq="M")
+        cutoff = pd.PeriodIndex(
+            enriched.loc[available, "latest_available_month_id"], freq="M"
+        )
+        if (maximum > cutoff).any():
+            raise AssertionError("La evaluacion operacional uso residuos futuros.")
+    return enriched.sort_values(
+        ["target_month_id", "territory_id"], ignore_index=True
+    )
+
+
+def evaluate_operational_prequential_intervals(
+    canonical_predictions: pd.DataFrame,
+    interval_config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resume sin escribir la validacion prequential del intervalo B5."""
+
+    intervals = apply_operational_prequential_intervals(
+        canonical_predictions, interval_config
+    )
+    available = intervals.loc[
+        intervals["interval_available"].fillna(False)
+    ].copy()
+    fallback_available = available.loc[
+        available.get(
+            "availability_fallback_used",
+            pd.Series(False, index=available.index),
+        ).fillna(False)
+    ]
+    metrics: dict[str, Any] = {
+        "total_rows": int(len(intervals)),
+        "interval_evaluable_rows": int(len(available)),
+        "non_evaluable_rows": int(len(intervals) - len(available)),
+        "evaluable_origins": int(available["target_month_id"].nunique()),
+        "first_evaluable_target": (
+            str(available["target_month_id"].min())
+            if not available.empty
+            else None
+        ),
+        "observed_coverage_pct": (
+            float(100 * available["covered"].mean())
+            if not available.empty
+            else float("nan")
+        ),
+        "median_width": (
+            float(available["width"].median())
+            if not available.empty
+            else float("nan")
+        ),
+        "mean_width": (
+            float(available["width"].mean())
+            if not available.empty
+            else float("nan")
+        ),
+        "misses_below": int(available["miss_below"].sum()),
+        "misses_above": int(available["miss_above"].sum()),
+        "fallback_evaluable_rows": int(len(fallback_available)),
+        "fallback_coverage_pct": (
+            float(100 * fallback_available["covered"].mean())
+            if not fallback_available.empty
+            else float("nan")
+        ),
+        "interval_predictions": intervals,
+    }
+    return metrics

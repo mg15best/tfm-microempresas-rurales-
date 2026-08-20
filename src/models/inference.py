@@ -1,4 +1,9 @@
-"""Inferencia operacional para el baseline estacional seleccionado."""
+"""Inferencia operacional B5 gobernada por el contrato point-in-time V2.
+
+La seleccion es el ETS congelado en B4. El baseline estacional solo se usa
+como fallback por indisponibilidad tecnica del ETS y como escala del intervalo
+operacional que se incorpora en una capa separada.
+"""
 
 from __future__ import annotations
 
@@ -10,24 +15,40 @@ from typing import Any, Literal, Mapping
 
 import pandas as pd
 
-from src.models.modeling_common import (
-    CONFIG_PATH,
+from src.models.ets_v2 import ETSForecastResult, fit_ets_forecast
+from src.models.modeling_v2_common import (
+    MODELING_V2_CONFIG_PATH,
     PROJECT_ROOT,
-    load_config,
-    resolve_project_path,
+    cutoff_policy_from_config,
+    filter_history_to_information_cutoff,
+    load_modeling_v2_config,
+    resolve_information_cutoff,
 )
 
 
-MODEL_NAME = "seasonal_naive_lag_12"
-PREDICTION_FEATURE = "lag_12_overnight_stays"
+SELECTED_MODEL_ID = "holt_winters_additive_damped_v1"
+SELECTION_STATUS = "provisional_validation_champion"
+FALLBACK_MODEL_ID = "seasonal_naive_lag_12"
+# Alias historico conservado para imports de solo lectura durante B5-B1.
 SUPPORTED_FORECAST_HORIZON_MONTHS = 1
+EFFECTIVE_MODEL_HORIZON_STEPS = 3
+AVAILABILITY_FALLBACK_REASONS = frozenset(
+    {
+        "insufficient_history",
+        "training_gap_unsupported",
+        "fit_failure",
+        "invalid_forecast",
+    }
+)
 
 REQUIRED_SOURCE_COLUMNS = {
     "territory_id",
     "territory_name",
+    "territory_level",
     "month_id",
     "date_month",
     "overnight_stays_total",
+    "complete_month_available",
     "is_provisional",
     "source_snapshot_id",
     "pipeline_run_id",
@@ -43,7 +64,7 @@ class InferenceError(RuntimeError):
 
 
 class InferenceConfigurationError(InferenceError):
-    """La configuracion no permite una inferencia reproducible."""
+    """La configuracion no permite una inferencia B5 reproducible."""
 
 
 class InferenceDataError(InferenceError):
@@ -59,7 +80,7 @@ class InvalidTerritoryError(InferenceError):
 
 
 class MissingReferenceError(InferenceError):
-    """No existe la observacion exacta requerida en target menos 12 meses."""
+    """No existe un fallback lag-12 valido y la inferencia falla cerrada."""
 
 
 class GlobalReferenceGapError(MissingReferenceError):
@@ -84,60 +105,51 @@ class InferenceWarning:
 
 @dataclass(frozen=True)
 class InferenceResult:
-    """Resultado trazable de una prediccion mensual provincial."""
+    """Resultado tipado y trazable de una prediccion mensual provincial."""
 
     territory_id: str
     territory_name: str
     target_month_id: str
+    business_origin_month_id: str
+    latest_available_month_id: str
     forecast_horizon_months: int
+    effective_model_horizon_steps: int
     predicted_overnight_stays_total: float
-    reference_month_id: str
-    reference_overnight_stays_total: float
-    reference_is_provisional: bool
-    model_name: str
+    selected_model_id: str
+    selection_status: str
+    actual_model_used: str
+    fallback_used: bool
+    fallback_reason: str
+    baseline_reference_month_id: str
+    baseline_prediction: float | None
+    baseline_reference_is_provisional: bool
+    ets_raw_prediction: float | None
+    clipping_applied: bool
+    training_start: str | None
+    training_end: str | None
+    training_rows: int
     source_snapshot_id: str
     pipeline_run_id: str
     data_version: str
-    latest_available_month_id: str
     operational_status: OperationalStatus
     warnings: tuple[InferenceWarning, ...]
 
     @property
     def is_operational(self) -> bool:
-        """Indica si existe un forecast valido para el proximo mes."""
+        """Indica si existe un point forecast valido para el proximo mes."""
         return self.operational_status == "forecast_ready"
 
-
 def _display_path(path: Path) -> str:
-    """Devuelve una ruta legible aunque este fuera de la raiz del proyecto."""
     try:
         return str(path.relative_to(PROJECT_ROOT))
     except ValueError:
         return str(path)
 
 
-def _load_inference_config(config_path: Path) -> dict[str, Any]:
-    """Carga la configuracion y traduce sus fallos a errores de inferencia."""
-    if not config_path.exists():
-        raise InferenceConfigurationError(
-            "No se encontro la configuracion necesaria para inferencia: "
-            f"{_display_path(config_path)}."
-        )
-
-    try:
-        return load_config(config_path)
-    except (OSError, TypeError, ValueError) as error:
-        raise InferenceConfigurationError(
-            "No se pudo cargar una configuracion valida para inferencia: "
-            f"{error}"
-        ) from error
-
-
 def _required_mapping(
     config: Mapping[str, Any],
     section: str,
 ) -> Mapping[str, Any]:
-    """Obtiene una seccion obligatoria de configuracion."""
     value = config.get(section)
     if not isinstance(value, Mapping):
         raise InferenceConfigurationError(
@@ -147,67 +159,112 @@ def _required_mapping(
 
 
 def _validate_inference_config(config: Mapping[str, Any]) -> None:
-    """Comprueba el contrato minimo de la solucion operacional."""
-    problem = _required_mapping(config, "problem")
-    baseline = _required_mapping(config, "baseline")
-    target = _required_mapping(config, "target")
-    source_dataset = _required_mapping(config, "source_dataset")
-    fallback = _required_mapping(config, "fallback")
-    selection = _required_mapping(
-        fallback,
-        "if_no_candidate_beats_baseline",
-    )
+    """Valida que B5 tenga una unica seleccion y ningun router de performance."""
+
+    source = _required_mapping(config, "source")
+    _required_mapping(config, "cutoff_policy")
+    ets = _required_mapping(config, "ets_candidate")
+    selection = _required_mapping(config, "operational_selection")
+    fallback = _required_mapping(selection, "fallback")
+
+    expected_selection = {
+        "selected_model_id": SELECTED_MODEL_ID,
+        "status": SELECTION_STATUS,
+        "evidence_scope": "canonical_rolling_validation",
+        "independent_test_confirmed": False,
+    }
+    mismatches = {
+        key: (selection.get(key), expected)
+        for key, expected in expected_selection.items()
+        if selection.get(key) != expected
+    }
+    if mismatches:
+        raise InferenceConfigurationError(
+            f"Seleccion operacional B5 no soportada: {mismatches}."
+        )
+    if ets.get("id") != SELECTED_MODEL_ID:
+        raise InferenceConfigurationError(
+            "ets_candidate no coincide con el modelo operacional seleccionado."
+        )
+    if fallback.get("model_id") != FALLBACK_MODEL_ID:
+        raise InferenceConfigurationError(
+            "El fallback B5 debe ser seasonal_naive_lag_12."
+        )
+    if fallback.get("policy") != "availability_only":
+        raise InferenceConfigurationError(
+            "El fallback B5 solo puede activarse por disponibilidad."
+        )
+    if fallback.get("performance_based") is not False:
+        raise InferenceConfigurationError(
+            "B5 prohibe el routing o fallback basado en performance."
+        )
+    if source.get("target_column") != "overnight_stays_total":
+        raise InferenceConfigurationError(
+            "source.target_column debe ser overnight_stays_total."
+        )
+    if not isinstance(source.get("path"), str) or not source["path"].strip():
+        raise InferenceConfigurationError("Falta una ruta valida en source.path.")
 
     try:
-        configured_horizon = int(problem["forecast_horizon_months"])
+        policy = cutoff_policy_from_config(config)
     except (KeyError, TypeError, ValueError) as error:
         raise InferenceConfigurationError(
-            "Falta un forecast_horizon_months valido en problem."
+            f"cutoff_policy V2 no es valida: {error}"
+        ) from error
+    if (
+        policy.business_origin_lag_months != 1
+        or policy.latest_available_lag_months != 3
+        or policy.max_training_target_lag_months != 3
+    ):
+        raise InferenceConfigurationError(
+            "B5 requiere business origin target-1 y cutoff target-3."
+        )
+    try:
+        business_horizon = int(ets.get("business_horizon_months", -1))
+        effective_horizon = int(ets.get("effective_horizon_steps", -1))
+    except (TypeError, ValueError) as error:
+        raise InferenceConfigurationError(
+            "Los horizontes ETS deben ser enteros."
+        ) from error
+    if business_horizon != 1:
+        raise InferenceConfigurationError(
+            "El horizonte de negocio ETS configurado no es un mes."
+        )
+    if effective_horizon != 3:
+        raise InferenceConfigurationError(
+            "El horizonte efectivo ETS configurado no es tres pasos."
+        )
+
+
+def _load_inference_config(config_path: Path) -> dict[str, Any]:
+    if not config_path.exists():
+        raise InferenceConfigurationError(
+            "No se encontro modeling_v2_config.yml: "
+            f"{_display_path(config_path)}."
+        )
+    try:
+        return load_modeling_v2_config(config_path)
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        raise InferenceConfigurationError(
+            f"No se pudo cargar modeling_v2_config.yml: {error}"
         ) from error
 
-    if configured_horizon != SUPPORTED_FORECAST_HORIZON_MONTHS:
-        raise InferenceConfigurationError(
-            "La configuracion no conserva el horizonte operacional de un mes."
-        )
 
-    if baseline.get("name") != MODEL_NAME:
-        raise InferenceConfigurationError(
-            f"La solucion configurada no es {MODEL_NAME}."
-        )
-
-    if baseline.get("prediction_feature") != PREDICTION_FEATURE:
-        raise InferenceConfigurationError(
-            "La feature del baseline no corresponde al lag natural de 12 meses."
-        )
-
-    if selection.get("selected_solution") != MODEL_NAME:
-        raise InferenceConfigurationError(
-            f"La solucion seleccionada no es {MODEL_NAME}."
-        )
-
-    if target.get("source_column") != "overnight_stays_total":
-        raise InferenceConfigurationError(
-            "La columna fuente del target no es overnight_stays_total."
-        )
-
-    if not isinstance(source_dataset.get("path"), str):
-        raise InferenceConfigurationError(
-            "Falta una ruta valida en source_dataset.path."
-        )
+def _resolve_project_path(path_value: str) -> Path:
+    path = Path(path_value)
+    return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def load_inference_dataset(config: Mapping[str, Any]) -> pd.DataFrame:
-    """Carga el Gold descriptivo declarado en la configuracion."""
-    _validate_inference_config(config)
-    source_dataset = _required_mapping(config, "source_dataset")
-    dataset_path = resolve_project_path(str(source_dataset["path"]))
+    """Carga el Gold declarado exclusivamente por modeling_v2_config.yml."""
 
+    _validate_inference_config(config)
+    source = _required_mapping(config, "source")
+    dataset_path = _resolve_project_path(str(source["path"]))
     if not dataset_path.exists():
         raise InferenceDataError(
-            "No se encontro el dataset de inferencia: "
-            f"{_display_path(dataset_path)}."
+            f"No se encontro el dataset de inferencia: {_display_path(dataset_path)}."
         )
-
     try:
         return pd.read_parquet(dataset_path)
     except (OSError, ValueError) as error:
@@ -216,119 +273,185 @@ def load_inference_dataset(config: Mapping[str, Any]) -> pd.DataFrame:
         ) from error
 
 
+def _valid_boolean_series(series: pd.Series, *, column: str) -> pd.Series:
+    if series.isna().any():
+        raise InferenceDataError(f"{column} contiene valores nulos.")
+    valid = series.map(
+        lambda value: isinstance(value, (bool, int)) and value in (0, 1)
+    )
+    if not bool(valid.all()):
+        raise InferenceDataError(
+            f"{column} debe contener solo booleanos no nulos."
+        )
+    return series.astype(bool)
+
+
 def _prepare_dataset(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Valida y normaliza solo los campos necesarios del Gold."""
+    """Valida schema, claves, provincia y lineage sin completar observaciones."""
+
     if not isinstance(dataframe, pd.DataFrame):
         raise InferenceDataError("dataframe debe ser un pandas.DataFrame.")
-
     if dataframe.empty:
-        raise EmptyInferenceDatasetError(
-            "El dataset de inferencia esta vacio."
-        )
+        raise EmptyInferenceDatasetError("El dataset de inferencia esta vacio.")
 
-    missing_columns = REQUIRED_SOURCE_COLUMNS.difference(dataframe.columns)
-    if missing_columns:
+    missing = sorted(REQUIRED_SOURCE_COLUMNS.difference(dataframe.columns))
+    if missing:
         raise InferenceDataError(
-            "Faltan columnas requeridas para inferencia: "
-            + ", ".join(sorted(missing_columns))
+            "Faltan columnas requeridas para inferencia: " + ", ".join(missing)
         )
-
     result = dataframe.loc[:, sorted(REQUIRED_SOURCE_COLUMNS)].copy()
-
     try:
         result["date_month"] = pd.to_datetime(
-            result["date_month"],
-            errors="raise",
+            result["date_month"], errors="raise"
         )
     except (TypeError, ValueError) as error:
-        raise InferenceDataError(
-            "date_month contiene fechas no validas."
-        ) from error
-
+        raise InferenceDataError("date_month contiene fechas no validas.") from error
     if result["date_month"].isna().any():
         raise InferenceDataError("date_month contiene valores nulos.")
-
-    if not result["date_month"].dt.is_month_start.all():
+    if not bool(result["date_month"].dt.is_month_start.all()):
         raise InferenceDataError(
             "date_month debe representar el primer dia de cada mes."
         )
 
-    result["territory_id"] = result["territory_id"].astype("string")
-    result["territory_name"] = result["territory_name"].astype("string")
-    result["month_id"] = result["month_id"].astype("string")
+    for column in ("territory_id", "territory_name", "territory_level", "month_id"):
+        if result[column].isna().any():
+            raise InferenceDataError(f"{column} contiene valores nulos.")
+        result[column] = result[column].astype("string")
+        if result[column].str.strip().eq("").any():
+            raise InferenceDataError(f"{column} contiene valores vacios.")
 
-    if result[["territory_id", "territory_name", "month_id"]].isna().any().any():
+    if not result["territory_level"].eq("province").all():
         raise InferenceDataError(
-            "Los identificadores territoriales o mensuales contienen nulos."
+            "La inferencia B5 admite exclusivamente nivel province."
         )
-
     expected_month_ids = result["date_month"].dt.strftime("%Y-%m")
     if not result["month_id"].eq(expected_month_ids).all():
         raise InferenceDataError(
             "month_id y date_month no representan el mismo mes."
         )
-
     duplicate_count = int(
         result.duplicated(["territory_id", "month_id"]).sum()
     )
     if duplicate_count:
         raise InferenceDataError(
-            "El dataset contiene "
-            f"{duplicate_count} claves territorio-mes duplicadas."
+            f"El dataset contiene {duplicate_count} claves territorio-mes duplicadas."
+        )
+    inconsistent_names = (
+        result.groupby("territory_id", observed=True)["territory_name"]
+        .nunique()
+        .gt(1)
+    )
+    if bool(inconsistent_names.any()):
+        raise InferenceDataError(
+            "Un territory_id no puede tener varios territory_name."
         )
 
-    provisional_values = result["is_provisional"].dropna()
-    valid_provisional = provisional_values.map(
-        lambda value: isinstance(value, (bool, int)) and value in (0, 1)
+    result["overnight_stays_total"] = pd.to_numeric(
+        result["overnight_stays_total"], errors="coerce"
     )
-    if result["is_provisional"].isna().any() or not valid_provisional.all():
-        raise InferenceDataError(
-            "is_provisional debe contener solo booleanos no nulos."
-        )
-    result["is_provisional"] = result["is_provisional"].astype(bool)
 
     for column in ("source_snapshot_id", "pipeline_run_id", "data_version"):
         if result[column].isna().any():
             raise InferenceDataError(
                 f"{column} debe identificar un unico lineage no nulo."
             )
-        lineage_values = result[column].astype(str)
-        if lineage_values.str.strip().eq("").any():
-            raise InferenceDataError(
-                f"{column} no puede contener valores vacios."
-            )
-        if lineage_values.nunique() != 1:
+        values = result[column].astype(str)
+        if values.str.strip().eq("").any() or values.nunique() != 1:
             raise InferenceDataError(
                 f"{column} debe identificar un unico lineage no nulo."
             )
-        result[column] = lineage_values.astype("string")
+        result[column] = values.astype("string")
 
     return result.sort_values(
-        ["territory_id", "date_month"]
-    ).reset_index(drop=True)
+        ["territory_id", "date_month"], ignore_index=True
+    )
+
+
+def _validate_available_observations(history: pd.DataFrame) -> None:
+    """Valida valores solo dentro del conjunto causal entregado al modelo."""
+
+    history["complete_month_available"] = _valid_boolean_series(
+        history["complete_month_available"],
+        column="complete_month_available",
+    )
+    history["is_provisional"] = _valid_boolean_series(
+        history["is_provisional"],
+        column="is_provisional",
+    )
+    numeric = history["overnight_stays_total"]
+    complete = history["complete_month_available"]
+    finite = numeric.map(
+        lambda value: isfinite(float(value)) if pd.notna(value) else False
+    )
+    invalid_complete = complete & (
+        numeric.isna() | ~finite | numeric.lt(0)
+    )
+    if bool(invalid_complete.any()):
+        raise InferenceDataError(
+            "Una observacion completa conocida en el cutoff tiene "
+            "overnight_stays_total invalido."
+        )
 
 
 def _local_today() -> date:
-    """Obtiene la fecha local del sistema como forecast origin por defecto."""
     return date.today()
 
 
 def _as_month(as_of_date: AsOfDate | None) -> pd.Period:
-    """Normaliza la fecha de referencia a un periodo mensual."""
-    if as_of_date is None:
-        timestamp = pd.Timestamp(_local_today())
-    else:
-        try:
-            timestamp = pd.Timestamp(as_of_date)
-        except (TypeError, ValueError) as error:
-            raise InferenceError(
-                f"as_of_date no es una fecha valida: {as_of_date!r}."
-            ) from error
-
+    try:
+        timestamp = pd.Timestamp(
+            _local_today() if as_of_date is None else as_of_date
+        )
+    except (TypeError, ValueError) as error:
+        raise InferenceError(
+            f"as_of_date no es una fecha valida: {as_of_date!r}."
+        ) from error
     if pd.isna(timestamp):
         raise InferenceError("as_of_date no puede ser nulo.")
+    return timestamp.to_period("M")
 
-    return pd.Period(timestamp.strftime("%Y-%m"), freq="M")
+
+def _baseline_reference(
+    territory_history: pd.DataFrame,
+    target_month: pd.Period,
+) -> tuple[pd.Series | None, str]:
+    reference_month = target_month - 12
+    rows = territory_history.loc[
+        territory_history["month_id"].eq(str(reference_month))
+    ]
+    if rows.empty:
+        return None, str(reference_month)
+    row = rows.iloc[0]
+    value = row["overnight_stays_total"]
+    valid = (
+        bool(row["complete_month_available"])
+        and pd.notna(value)
+        and isfinite(float(value))
+        and float(value) >= 0
+    )
+    return (row if valid else None), str(reference_month)
+
+
+def _validate_ets_result(
+    forecast: ETSForecastResult,
+    *,
+    territory_id: str,
+    target_month_id: str,
+    latest_available_month_id: str,
+) -> None:
+    if forecast.territory_id != territory_id:
+        raise InferenceDataError("El ETS devolvio otro territorio.")
+    if forecast.target_month_id != target_month_id:
+        raise InferenceDataError("El ETS devolvio otro target.")
+    if forecast.latest_available_month_id != latest_available_month_id:
+        raise InferenceDataError("El ETS devolvio otro cutoff.")
+    if forecast.effective_horizon_steps != EFFECTIVE_MODEL_HORIZON_STEPS:
+        raise InferenceDataError("El ETS devolvio un horizonte efectivo invalido.")
+    if forecast.training_end is not None and (
+        pd.Period(forecast.training_end, freq="M")
+        > pd.Period(latest_available_month_id, freq="M")
+    ):
+        raise InferenceDataError("training_end ETS supera el cutoff point-in-time.")
 
 
 def predict_next_month(
@@ -338,127 +461,191 @@ def predict_next_month(
     forecast_horizon_months: int = SUPPORTED_FORECAST_HORIZON_MONTHS,
     dataframe: pd.DataFrame | None = None,
     config: Mapping[str, Any] | None = None,
-    config_path: Path = CONFIG_PATH,
+    config_path: Path = MODELING_V2_CONFIG_PATH,
 ) -> InferenceResult:
-    """Predice el siguiente mes con el valor exacto de 12 meses antes.
+    """Predice target+1 con ETS y fallback lag-12 solo por disponibilidad."""
 
-    Si no se proporciona ``dataframe``, carga el Gold declarado en la
-    configuracion. El target se deriva del mes natural de ``as_of_date``;
-    el ultimo mes publicado se conserva solo como contexto. Por defecto se
-    utiliza la fecha local real del sistema como forecast origin.
-    """
-    effective_config: Mapping[str, Any]
-    if config is None:
-        effective_config = _load_inference_config(config_path)
-    else:
-        effective_config = config
-
+    effective_config: Mapping[str, Any] = (
+        _load_inference_config(config_path) if config is None else config
+    )
     _validate_inference_config(effective_config)
-
     if (
         not isinstance(forecast_horizon_months, int)
         or isinstance(forecast_horizon_months, bool)
         or forecast_horizon_months != SUPPORTED_FORECAST_HORIZON_MONTHS
     ):
         raise UnsupportedHorizonError(
-            "seasonal_naive_lag_12 solo admite un horizonte de un mes."
+            "El sistema B5 solo admite un horizonte de negocio de un mes."
         )
 
-    raw_dataframe = (
+    raw = (
         load_inference_dataset(effective_config)
         if dataframe is None
         else dataframe
     )
-    source = _prepare_dataset(raw_dataframe)
-
-    requested_territory_id = str(territory_id).strip()
-    territory_rows = source.loc[
-        source["territory_id"].eq(requested_territory_id)
-    ]
-    if territory_rows.empty:
+    source = _prepare_dataset(raw)
+    requested_id = str(territory_id).strip()
+    territory_history = source.loc[
+        source["territory_id"].eq(requested_id)
+    ].copy()
+    if territory_history.empty:
         raise InvalidTerritoryError(
-            f"No existe el territory_id '{requested_territory_id}'."
+            f"No existe el territory_id '{requested_id}'."
         )
+    territory_name = str(territory_history["territory_name"].iloc[0])
 
-    territory_names = territory_rows["territory_name"].unique()
-    if len(territory_names) != 1:
-        raise InferenceDataError(
-            "El territorio solicitado tiene mas de un territory_name."
-        )
-
-    source_months = source["date_month"].dt.to_period("M")
-    latest_available_month = source_months.max()
     as_of_month = _as_month(as_of_date)
     target_month = as_of_month + forecast_horizon_months
-    reference_month = target_month - 12
-
-    global_reference_rows = source.loc[
-        source_months.eq(reference_month)
-    ]
-    if global_reference_rows.empty:
-        raise GlobalReferenceGapError(
-            "No existe el mes de referencia exacto "
-            f"{reference_month} en el dataset (gap global)."
+    policy = cutoff_policy_from_config(effective_config)
+    origin = resolve_information_cutoff(target_month, policy)
+    if origin.business_origin_month_id != str(as_of_month):
+        raise InferenceConfigurationError(
+            "El business origin V2 no coincide con as_of_month."
+        )
+    if origin.max_training_target_month_id != origin.latest_available_month_id:
+        raise InferenceConfigurationError(
+            "El purge de labels no coincide con el cutoff operacional B5."
         )
 
-    reference_rows = global_reference_rows.loc[
-        global_reference_rows["territory_id"].eq(requested_territory_id)
-    ]
-    if reference_rows.empty:
-        raise TerritorialReferenceGapError(
-            "No existe la observacion exacta de "
-            f"{requested_territory_id} en {reference_month} "
-            "(gap territorial)."
+    cutoff_history = filter_history_to_information_cutoff(
+        territory_history,
+        origin,
+        observation_month_column="month_id",
+    )
+    if cutoff_history.empty:
+        raise MissingReferenceError(
+            "No existe historia provincial compatible con el cutoff."
         )
+    _validate_available_observations(cutoff_history)
+    if pd.PeriodIndex(cutoff_history["month_id"], freq="M").max() > pd.Period(
+        origin.latest_available_month_id, freq="M"
+    ):
+        raise AssertionError("La inferencia ETS recibio datos futuros.")
 
-    reference_row = reference_rows.iloc[0]
-    reference_value = pd.to_numeric(
-        pd.Series([reference_row["overnight_stays_total"]]),
-        errors="coerce",
-    ).iloc[0]
-    if pd.isna(reference_value):
-        raise InferenceDataError(
-            "overnight_stays_total es nulo o no numerico en la "
-            "observacion de referencia exacta."
-        )
-    reference_number = float(reference_value)
-    if not isfinite(reference_number):
-        raise InferenceDataError(
-            "overnight_stays_total debe ser finito en la observacion "
-            "de referencia exacta."
-        )
-    if reference_number < 0:
-        raise InferenceDataError(
-            "overnight_stays_total es negativo en la observacion de referencia."
-        )
+    reference_row, reference_month_id = _baseline_reference(
+        cutoff_history,
+        target_month,
+    )
+    baseline_prediction = (
+        float(reference_row["overnight_stays_total"])
+        if reference_row is not None
+        else None
+    )
+    baseline_provisional = (
+        bool(reference_row["is_provisional"])
+        if reference_row is not None
+        else False
+    )
+
+    ets_forecast = fit_ets_forecast(
+        cutoff_history,
+        origin,
+        _required_mapping(effective_config, "ets_candidate"),
+    )
+    _validate_ets_result(
+        ets_forecast,
+        territory_id=requested_id,
+        target_month_id=str(target_month),
+        latest_available_month_id=origin.latest_available_month_id,
+    )
 
     warnings: list[InferenceWarning] = []
-    reference_is_provisional = bool(reference_row["is_provisional"])
-    if reference_is_provisional:
+    if ets_forecast.candidate_available:
+        prediction = ets_forecast.prediction
+        if prediction is None or not isfinite(float(prediction)) or prediction < 0:
+            raise InferenceDataError(
+                "El ETS marcado disponible no contiene un forecast valido."
+            )
+        point = float(prediction)
+        actual_model = SELECTED_MODEL_ID
+        fallback_used = False
+        fallback_reason = "not_used"
+    else:
+        reason = str(ets_forecast.unavailable_reason)
+        if reason not in AVAILABILITY_FALLBACK_REASONS:
+            raise InferenceDataError(
+                f"Motivo de indisponibilidad ETS no soportado: {reason!r}."
+            )
+        if reference_row is None or baseline_prediction is None:
+            raise MissingReferenceError(
+                "ETS no disponible y no existe una referencia lag-12 valida "
+                f"para {requested_id} en {reference_month_id}."
+            )
+        point = baseline_prediction
+        actual_model = FALLBACK_MODEL_ID
+        fallback_used = True
+        fallback_reason = reason
         warnings.append(
             InferenceWarning(
-                code="provisional_reference_data",
+                code="availability_fallback_used",
                 message=(
-                    "La observacion de referencia esta marcada como "
-                    "provisional."
+                    "ETS no disponible; se usa seasonal_naive_lag_12 "
+                    f"por {reason}."
+                ),
+            )
+        )
+        if baseline_provisional:
+            warnings.append(
+                InferenceWarning(
+                    code="provisional_reference_data",
+                    message=(
+                        "La referencia lag-12 usada por el fallback es provisional."
+                    ),
+                )
+            )
+
+    if ets_forecast.clipping_applied:
+        warnings.append(
+            InferenceWarning(
+                code="ets_negative_prediction_clipped",
+                message="La prediccion ETS negativa se trunco a cero.",
+            )
+        )
+    if ets_forecast.fit_warning_count:
+        warnings.append(
+            InferenceWarning(
+                code="ets_fit_warnings",
+                message=(
+                    f"El ajuste ETS registro {ets_forecast.fit_warning_count} "
+                    "warnings no bloqueantes."
                 ),
             )
         )
 
+    lineage_row = cutoff_history.iloc[-1]
     return InferenceResult(
-        territory_id=requested_territory_id,
-        territory_name=str(territory_names[0]),
+        territory_id=requested_id,
+        territory_name=territory_name,
         target_month_id=str(target_month),
-        forecast_horizon_months=forecast_horizon_months,
-        predicted_overnight_stays_total=reference_number,
-        reference_month_id=str(reference_month),
-        reference_overnight_stays_total=reference_number,
-        reference_is_provisional=reference_is_provisional,
-        model_name=MODEL_NAME,
-        source_snapshot_id=str(reference_row["source_snapshot_id"]),
-        pipeline_run_id=str(reference_row["pipeline_run_id"]),
-        data_version=str(reference_row["data_version"]),
-        latest_available_month_id=str(latest_available_month),
+        business_origin_month_id=origin.business_origin_month_id,
+        latest_available_month_id=origin.latest_available_month_id,
+        forecast_horizon_months=SUPPORTED_FORECAST_HORIZON_MONTHS,
+        effective_model_horizon_steps=EFFECTIVE_MODEL_HORIZON_STEPS,
+        predicted_overnight_stays_total=point,
+        selected_model_id=SELECTED_MODEL_ID,
+        selection_status=SELECTION_STATUS,
+        actual_model_used=actual_model,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
+        baseline_reference_month_id=reference_month_id,
+        baseline_prediction=(
+            float(baseline_prediction)
+            if baseline_prediction is not None
+            else None
+        ),
+        baseline_reference_is_provisional=baseline_provisional,
+        ets_raw_prediction=(
+            float(ets_forecast.raw_prediction)
+            if ets_forecast.raw_prediction is not None
+            else None
+        ),
+        clipping_applied=bool(ets_forecast.clipping_applied),
+        training_start=ets_forecast.training_start,
+        training_end=ets_forecast.training_end,
+        training_rows=int(ets_forecast.training_rows),
+        source_snapshot_id=str(lineage_row["source_snapshot_id"]),
+        pipeline_run_id=str(lineage_row["pipeline_run_id"]),
+        data_version=str(lineage_row["data_version"]),
         operational_status="forecast_ready",
         warnings=tuple(warnings),
     )

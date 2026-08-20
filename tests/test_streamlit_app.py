@@ -1,14 +1,19 @@
 import unittest
 
+from dataclasses import replace
 from datetime import date
 from io import BytesIO
 from pathlib import Path
 from textwrap import dedent
+from unittest.mock import patch
 
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
+from src.models import inference
+from src.models.inference import FALLBACK_MODEL_ID, SELECTED_MODEL_ID
 from src.visualization.streamlit_app import (
+    AppResources,
     build_download_csv,
     build_history_summary,
     build_query,
@@ -22,6 +27,7 @@ from src.visualization.streamlit_app import (
     make_history_figure,
     prepare_history_chart,
     read_app_resources,
+    load_app_resources,
     territory_options,
     translate_warning,
 )
@@ -152,11 +158,32 @@ class TestStreamlitRealProduct(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.resources = read_app_resources()
-        cls.view = build_query(
+        cls.araba = build_query(
             cls.resources,
             "ES-PROV-01",
-            as_of_date="2026-08-13",
+            as_of_date="2026-08-20",
         )
+        cls.badajoz = build_query(
+            cls.resources,
+            "ES-PROV-06",
+            as_of_date="2026-08-20",
+        )
+
+    def test_app_resources_are_b5_only_and_isolate_score_bank(self) -> None:
+        resources = self.resources
+
+        self.assertTrue(resources.config_v2)
+        self.assertFalse(hasattr(resources, "predictions"))
+        self.assertFalse(hasattr(resources, "official_metrics"))
+        self.assertEqual(
+            resources.forecast_resources.canonical_bundle.selected_model_id,
+            SELECTED_MODEL_ID,
+        )
+        first = resources.forecast_resources.operational_score_bank
+        original = first.iloc[0]["score"]
+        first.loc[first.index[0], "score"] = -999.0
+        second = resources.forecast_resources.operational_score_bank
+        self.assertEqual(second.iloc[0]["score"], original)
 
     def test_real_selector_contains_fifty_provinces(self) -> None:
         options = territory_options(self.resources.gold)
@@ -169,40 +196,59 @@ class TestStreamlitRealProduct(unittest.TestCase):
         )
 
     def test_real_araba_query_reproduces_expected_product(self) -> None:
-        view = self.view
+        view = self.araba
 
         self.assertEqual(view.territory_name, "Araba/Álava")
-        self.assertEqual(view.as_of_date, date(2026, 8, 13))
+        self.assertEqual(view.as_of_date, date(2026, 8, 20))
         self.assertEqual(view.target_month_id, "2026-09")
-        self.assertEqual(view.forecast_value, 7_691.0)
-        self.assertEqual(view.reference_month_id, "2025-09")
-        self.assertTrue(view.reference_is_provisional)
+        self.assertGreaterEqual(view.forecast_value, 0)
+        self.assertEqual(view.baseline_reference_month_id, "2025-09")
+        self.assertTrue(view.baseline_reference_is_provisional)
         self.assertEqual(view.latest_available_month_id, "2026-06")
+        self.assertEqual(view.selected_model_id, SELECTED_MODEL_ID)
+        self.assertEqual(view.actual_model_used, SELECTED_MODEL_ID)
+        self.assertFalse(view.fallback_used)
+        self.assertEqual(view.selection_status, "provisional_validation_champion")
+        self.assertTrue(view.interval_available)
+        self.assertLessEqual(view.interval_lower, view.forecast_value)
+        self.assertGreaterEqual(view.interval_upper, view.forecast_value)
         self.assertEqual(view.activity_level, "high")
         self.assertEqual(view.historical_percentile_pct, 90.0)
         self.assertEqual(view.historical_sample_size, 10)
-        self.assertAlmostEqual(view.validation_wape_pct, 24.392342351526025)
+        self.assertAlmostEqual(view.validation_wape_pct, 23.354961719573705)
         self.assertEqual(view.validation_rows, 35)
-        self.assertIn(
-            "provisional_reference_data",
-            {warning.code for warning in view.warnings},
-        )
+        self.assertEqual(view.evaluation_scope, "canonical_rolling_validation")
 
     def test_download_is_utf8_csv_built_in_memory(self) -> None:
-        payload = build_download_csv(self.view)
+        payload = build_download_csv(self.araba)
         exported = pd.read_csv(BytesIO(payload))
 
         self.assertTrue(payload.startswith(b"\xef\xbb\xbf"))
         self.assertEqual(len(exported), 1)
         self.assertEqual(exported.iloc[0]["territory_id"], "ES-PROV-01")
         self.assertEqual(exported.iloc[0]["target_month_id"], "2026-09")
-        self.assertEqual(
-            exported.iloc[0]["warning_codes"],
-            "provisional_reference_data",
-        )
+        required = {
+            "selected_model_id",
+            "selection_status",
+            "actual_model_used",
+            "fallback_used",
+            "fallback_reason",
+            "baseline_reference_month_id",
+            "baseline_prediction",
+            "interval_available",
+            "interval_lower",
+            "interval_upper",
+            "interval_nominal_level",
+            "interval_method_id",
+            "evaluation_scope",
+            "evaluation_generator_commit_sha",
+            "evaluation_logical_prediction_sha256",
+        }
+        self.assertTrue(required.issubset(exported.columns))
+        self.assertTrue(pd.isna(exported.iloc[0]["warning_codes"]))
 
     def test_real_chart_and_text_keep_forecast_separate(self) -> None:
-        figure = make_history_figure(self.view.chart)
+        figure = make_history_figure(self.araba.chart)
         historical_months = {
             pd.Timestamp(value).strftime("%Y-%m")
             for value in figure.data[0].x
@@ -217,13 +263,88 @@ class TestStreamlitRealProduct(unittest.TestCase):
         self.assertNotIn("2026-07", historical_months)
         self.assertNotIn("2026-08", historical_months)
 
-        summary = build_history_summary(self.view)
+        self.assertTrue(figure.data[1].error_y.visible)
+        summary = build_history_summary(self.araba)
         self.assertIn("Araba/Álava", summary)
         self.assertIn("julio de 2024", summary)
         self.assertIn("junio de 2026", summary)
         self.assertIn("septiembre de 2026", summary)
-        self.assertIn("7.691 pernoctaciones provinciales", summary)
+        self.assertIn("pernoctaciones provinciales", summary)
         self.assertIn("interrupciones", summary)
+
+    def test_badajoz_exposes_selected_model_and_availability_fallback(self) -> None:
+        view = self.badajoz
+
+        self.assertEqual(view.selected_model_id, SELECTED_MODEL_ID)
+        self.assertEqual(view.actual_model_used, FALLBACK_MODEL_ID)
+        self.assertTrue(view.fallback_used)
+        self.assertEqual(view.fallback_reason, "training_gap_unsupported")
+        self.assertEqual(view.forecast_value, 14_214.0)
+        self.assertTrue(view.interval_available)
+        self.assertEqual(view.chart.history["date_month"].max(), pd.Timestamp("2026-06-01"))
+
+    def test_unavailable_interval_keeps_point_and_has_no_chart_range(self) -> None:
+        view = replace(
+            self.araba,
+            interval_available=False,
+            interval_lower=None,
+            interval_upper=None,
+            interval_unavailable_reason="insufficient_calibration_origins",
+            chart=replace(
+                self.araba.chart,
+                interval_available=False,
+                interval_lower=None,
+                interval_upper=None,
+            ),
+        )
+
+        figure = make_history_figure(view.chart)
+
+        self.assertGreaterEqual(view.forecast_value, 0)
+        self.assertFalse(view.interval_available)
+        self.assertFalse(figure.data[1].error_y.visible)
+
+    def test_precomputed_resources_avoid_revalidation_and_score_rebuild(self) -> None:
+        with (
+            patch(
+                "src.visualization.dashboard_data.validate_canonical_validation_bundle"
+            ) as validate_bundle,
+            patch(
+                "src.application.forecast_service.build_operational_score_bank"
+            ) as build_bank,
+            patch(
+                "src.models.inference.fit_ets_forecast",
+                wraps=inference.fit_ets_forecast,
+            ) as fit_ets,
+        ):
+            build_query(
+                self.resources,
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+            )
+
+        validate_bundle.assert_not_called()
+        build_bank.assert_not_called()
+        fit_ets.assert_called_once()
+
+    def test_streamlit_resource_cache_reads_once_and_returns_isolated_data(
+        self,
+    ) -> None:
+        load_app_resources.clear()
+        with patch(
+            "src.visualization.streamlit_app.read_app_resources",
+            return_value=self.resources,
+        ) as read_resources:
+            first = load_app_resources()
+            second = load_app_resources()
+
+        read_resources.assert_called_once()
+        first.gold.loc[first.gold.index[0], "territory_name"] = "mutated"
+        self.assertNotEqual(
+            second.gold.loc[second.gold.index[0], "territory_name"],
+            "mutated",
+        )
+        load_app_resources.clear()
 
 
 class TestStreamlitNativeSmoke(unittest.TestCase):
@@ -238,7 +359,10 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertEqual(app.selectbox[0].label, "Provincia")
         self.assertEqual(len(app.selectbox[0].options), 50)
         metric_labels = {metric.label for metric in app.metric}
-        self.assertIn("Pernoctaciones provinciales previstas", metric_labels)
+        self.assertIn(
+            "Pernoctaciones previstas en turismo rural",
+            metric_labels,
+        )
         self.assertNotIn("Error histórico WAPE", metric_labels)
 
         subheaders = [item.value for item in app.subheader]
@@ -246,7 +370,7 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
             subheaders.index("Orientación para la planificación"),
             subheaders.index("Histórico provincial"),
         )
-        self.assertIn("Cómo interpretar la previsión", subheaders)
+        self.assertIn("Posición frente al histórico", subheaders)
 
         visible_text = " ".join(
             str(item.value)
@@ -260,11 +384,14 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
             for item in app.get(kind)
         )
         self.assertIn("Por encima de lo habitual", visible_text)
-        self.assertIn("Error porcentual histórico (WAPE)", visible_text)
+        self.assertIn("Error WAPE en validación", visible_text)
+        self.assertIn("Intervalo predictivo empírico al 80 %", visible_text)
+        self.assertIn("seleccionado provisionalmente", visible_text)
+        self.assertIn("distinta del intervalo predictivo", visible_text)
         self.assertNotIn("precisión", visible_text.casefold())
+        self.assertNotIn("confidence", visible_text.casefold())
         self.assertNotIn("Mes de referencia (t-12)", visible_text)
         self.assertNotIn("Alta", visible_text)
-        self.assertIn("dato utilizado como referencia es provisional", visible_text)
         self.assertIn("septiembres históricos comparables", visible_text)
         self.assertIn("Los meses sin datos", visible_text)
 
@@ -273,9 +400,64 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertEqual(len(app.get("plotly_chart")), 1)
         self.assertEqual(
             [item.label for item in app.expander],
-            ["Rendimiento histórico del modelo", "Metodología y trazabilidad"],
+            [
+                "Resultados en validación temporal canónica",
+                "Metodología y trazabilidad",
+            ],
         )
         self.assertEqual(len(app.download_button), 1)
+
+    def test_badajoz_rerun_shows_human_fallback_warning(self) -> None:
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(app_path, default_timeout=120).run()
+
+        app.selectbox[0].select("Badajoz").run(timeout=120)
+
+        self.assertEqual(list(app.exception), [])
+        visible_warnings = " ".join(item.value for item in app.warning)
+        self.assertIn("no fue posible generar la estimación ETS", visible_warnings)
+        self.assertIn("mismo mes del año anterior", visible_warnings)
+        self.assertNotIn("training_gap_unsupported", visible_warnings)
+
+    def test_interval_unavailable_copy_does_not_block_point(self) -> None:
+        script = dedent(
+            """
+            from dataclasses import replace
+            from src.visualization.streamlit_app import (
+                _render_primary_result,
+                build_query,
+                read_app_resources,
+            )
+
+            view = build_query(
+                read_app_resources(),
+                "ES-PROV-01",
+                as_of_date="2026-08-20",
+            )
+            controlled = replace(
+                view,
+                interval_available=False,
+                interval_lower=None,
+                interval_upper=None,
+                interval_unavailable_reason="insufficient_calibration_origins",
+            )
+            _render_primary_result(controlled)
+            """
+        )
+
+        app = AppTest.from_string(script, default_timeout=120).run()
+
+        self.assertEqual(list(app.exception), [])
+        text = " ".join(
+            str(item.value)
+            for kind in ("markdown", "caption", "metric")
+            for item in app.get(kind)
+        )
+        self.assertIn("Intervalo no disponible", text)
+        self.assertIn(
+            "Pernoctaciones previstas en turismo rural",
+            [item.label for item in app.metric],
+        )
 
 
 class TestStreamlitControlledStates(unittest.TestCase):
@@ -284,18 +466,14 @@ class TestStreamlitControlledStates(unittest.TestCase):
     def test_load_error_is_simple_and_does_not_render_partial_results(self) -> None:
         script = dedent(
             """
-            import pandas as pd
+            from dataclasses import replace
             from src.visualization.streamlit_app import (
-                AppResources,
+                read_app_resources,
                 render_app,
             )
 
-            resources = AppResources(
-                config={},
-                gold=pd.DataFrame(),
-                predictions=pd.DataFrame(),
-                official_metrics=pd.DataFrame(),
-            )
+            loaded = read_app_resources()
+            resources = replace(loaded, gold=loaded.gold.iloc[0:0].copy())
             render_app(resources=resources)
             """
         )
@@ -309,31 +487,53 @@ class TestStreamlitControlledStates(unittest.TestCase):
         )
         self.assertEqual(len(app.metric), 0)
 
+    def test_canonical_integrity_error_has_a_distinct_blocking_message(self) -> None:
+        script = dedent(
+            """
+            from unittest.mock import patch
+            from src.visualization.dashboard_data import CanonicalArtifactError
+            from src.visualization.streamlit_app import render_app
+
+            with patch(
+                "src.visualization.streamlit_app.load_app_resources",
+                side_effect=CanonicalArtifactError("invalid hash"),
+            ):
+                render_app()
+            """
+        )
+
+        app = AppTest.from_string(script, default_timeout=30).run()
+
+        self.assertEqual(list(app.exception), [])
+        self.assertEqual(
+            [item.value for item in app.error],
+            [format_error_message("canonical")],
+        )
+        self.assertEqual(len(app.metric), 0)
+
     def test_missing_reference_is_a_clear_blocking_state(self) -> None:
         script = dedent(
             """
+            from dataclasses import replace
             from src.visualization.streamlit_app import (
-                AppResources,
                 read_app_resources,
                 render_app,
             )
 
             resources = read_app_resources()
             missing_reference = (
-                resources.gold["territory_id"].astype(str).eq("ES-PROV-02")
-                & resources.gold["month_id"].astype(str).eq("2025-09")
+                resources.gold["month_id"].astype(str).eq("2025-09")
             )
-            controlled = AppResources(
-                config=resources.config,
+            controlled = replace(
+                resources,
                 gold=resources.gold.loc[~missing_reference].copy(),
-                predictions=resources.predictions,
-                official_metrics=resources.official_metrics,
             )
             render_app(resources=controlled, as_of_date="2026-08-13")
             """
         )
 
         app = AppTest.from_string(script, default_timeout=60).run()
+        app.selectbox[0].select("Badajoz").run(timeout=60)
 
         self.assertEqual(list(app.exception), [])
         self.assertEqual(
@@ -345,8 +545,8 @@ class TestStreamlitControlledStates(unittest.TestCase):
     def test_insufficient_history_is_visible_and_non_blocking(self) -> None:
         script = dedent(
             """
+            from dataclasses import replace
             from src.visualization.streamlit_app import (
-                AppResources,
                 read_app_resources,
                 render_app,
             )
@@ -361,11 +561,9 @@ class TestStreamlitControlledStates(unittest.TestCase):
                 & dates.dt.month.eq(9)
                 & dates.dt.year.lt(2022)
             )
-            controlled = AppResources(
-                config=resources.config,
+            controlled = replace(
+                resources,
                 gold=resources.gold.loc[~old_comparables].copy(),
-                predictions=resources.predictions,
-                official_metrics=resources.official_metrics,
             )
             render_app(resources=controlled, as_of_date="2026-08-13")
             """
