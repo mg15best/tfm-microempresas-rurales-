@@ -15,7 +15,7 @@ El objetivo es transformar estadísticas oficiales españolas sobre turismo rura
 * comparar provincias;
 * distinguir demanda residente y extranjera;
 * anticipar la demanda turística mensual;
-* generar posteriormente indicadores y recomendaciones operativas explicables.
+* generar indicadores y orientaciones operativas explicables.
 
 La variable objetivo principal del modelado es:
 
@@ -41,38 +41,38 @@ Actualmente están implementados:
 * contrato y validación reproducible del dataset de modelado;
 * control point-in-time que separa mes de referencia y fecha de publicación;
 * purge de etiquetas de entrenamiento todavía no publicadas en cada forecast origin;
-* baseline estacional `lag_12`;
-* regresión Ridge como candidato interpretable;
-* `HistGradientBoostingRegressor` como candidato flexible;
-* backtesting temporal con ventana expansiva;
-* selección operacional basada exclusivamente en las tres validaciones;
-* test histórico marcado como ya abierto y protegido frente a reutilización;
-* artefactos de test anteriores archivados como pre-point-in-time.
+* infraestructura de evaluación point-in-time V2 y backtesting rolling;
+* candidatos `lag_12`, tendencia estacional y ETS evaluados sin fuga temporal;
+* artefacto canónico de validación ETS congelado y verificable por hash;
+* ETS como `provisional_validation_champion`, sin confirmación en una nueva
+  ventana final intacta e independiente;
+* inferencia operacional ETS con `lag_12` solo como fallback de disponibilidad,
+  no como router competitivo entre modelos;
+* intervalo empírico operacional del 80 % calibrado prequentialmente;
+* contexto de decisión basado en posición histórica Q25/Q75;
+* frontal funcional con Streamlit y Plotly para las 50 provincias;
+* estados controlados de error, caché y descarga CSV;
+* test histórico anterior protegido frente a reutilización.
 
-Resultado resumido de la Entrega 4:
+Estado técnico actual tras B5:
 
 | Indicador | Resultado |
 |---|---:|
-| Dataset de modelado | 12.691 filas y 37 columnas |
-| Validación del dataset | 73 PASS / 0 WARN / 0 FAIL |
-| MAE baseline en validación agregada | 5.018,64 |
-| MAE mejor Ridge seguro en validación agregada | 5.164,60 |
-| MAE `hgb_raw_02` seguro en validación agregada | 6.852,14 |
-| Solución operacional seleccionada | Baseline `lag_12` |
+| Modelo seleccionado | ETS (`holt_winters_additive_damped_v1`) |
+| Estado de selección | `provisional_validation_champion` |
+| Evidencia | `canonical_rolling_validation` |
+| MAE pooled canónico | 4.084,574535196216 |
+| RMSE pooled canónico | 7.770,827125343509 |
+| WAPE pooled canónico | 19,68924738072576 % |
+| Sesgo medio pooled canónico | -1.862,1237643616084 |
+| Fallback | `seasonal_naive_lag_12`, solo por disponibilidad |
+| Incertidumbre | Intervalo empírico operacional del 80 % (`operational_prequential_scaled_absolute_residual_interval_v1`) |
+| Frontal | Streamlit + Plotly |
 
-Los resultados anteriores de HGB se conservan como trazabilidad de una
-evaluación retrospectiva basada en el mes de referencia, no como rendimiento
-operacional point-in-time. La corrección de Entrega 4 fija el forecast origin
-al cierre del mes anterior al objetivo y excluye de `model_inputs` las
-estadísticas EOTR que todavía no estarían publicadas. El baseline estacional
-`lag_12` se mantiene como referencia operacional metodológicamente válida.
-La misma política purga de cada entrenamiento supervisado las etiquetas EOTR
-posteriores a `validation_start - 3 meses`; el límite efectivo es el mínimo
-entre ese cutoff de publicación y el fin estructural del fold.
-Como trazabilidad histórica, la especificación anterior de HGB obtuvo MAE
-2.760,59 frente a 3.045,00 del baseline en test, una mejora del 9,34 %. Esas
-cifras son retrospectivas y no se usan como evidencia operacional ni en la
-selección corregida.
+La Entrega 4 conserva la comparación histórica entre baseline, Ridge y HGB y
+su test ya abierto en `docs/entregas/04_analisis_modelado.md`. Esa evidencia
+permanece como trazabilidad, pero no representa la selección operacional B5 ni
+se reutiliza para reajustar el sistema actual.
 
 ## Fuentes utilizadas
 
@@ -99,12 +99,17 @@ El dataset específico de modelado se encuentra en:
 data/gold/gold_modeling_dataset_monthly.parquet
 ```
 
-Las predicciones vigentes para la selección point-in-time contienen solo las
-tres ventanas de validación y se encuentran en:
+La evidencia canónica vigente para la selección ETS contiene las ventanas de
+validación rolling point-in-time y se encuentra en:
 
 ```text
-data/model_outputs/model_selection_validation_predictions.parquet
+data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+data/metadata/ets_v2_rolling_validation_predictions.metadata.yml
 ```
+
+El modelo seleccionado es ETS con estado `provisional_validation_champion`.
+`lag_12` se utiliza únicamente cuando falta un input requerido por ETS en el
+corte disponible. No existe un router que elija modelos por territorio.
 
 Los resultados de test de la especificación anterior se conservan únicamente
 como archivo histórico en
@@ -120,12 +125,13 @@ Características de la versión actual:
 
 | Característica          |                            Resultado |
 | ----------------------- | -----------------------------------: |
-| Filas                   |                               12.691 |
+| Filas                   |                               12.741 |
 | Columnas                |                                   64 |
 | Provincias              |                                   50 |
-| Periodo                 |                    2005-01 a 2026-05 |
+| Periodo                 |                    2005-01 a 2026-06 |
 | Claves duplicadas       |                                    0 |
 | Registros provisionales |                                  600 |
+| Tamaño del parquet      |                      1.809.283 bytes |
 | Versión                 | `gold_tourism_demand_monthly_v1.0.0` |
 
 La clave principal es:
@@ -134,7 +140,8 @@ La clave principal es:
 territory_id + month_id
 ```
 
-Los datos desde junio de 2025 hasta mayo de 2026 están marcados como provisionales.
+Los datos desde junio de 2025 hasta mayo de 2026 están marcados como
+provisionales. El último mes disponible en la tabla gold es junio de 2026.
 
 Los meses `2020-04`, `2020-05` y `2020-11` no contienen observaciones provinciales publicadas. No se rellenan con cero.
 
@@ -147,7 +154,7 @@ El análisis exploratorio identifica que:
 * Illes Balears fue la provincia con más pernoctaciones rurales en 2024, con 1.688.709;
 * agosto es el mes con mayor demanda media;
 * Santa Cruz de Tenerife alcanzó su máximo histórico de la serie en agosto de 2005, con 36.085 pernoctaciones;
-* el último mes disponible es mayo de 2026 y tiene carácter provisional.
+* el último mes disponible es junio de 2026.
 
 Estos resultados son agregados territoriales y no representan la demanda o rentabilidad de una empresa individual.
 
@@ -162,11 +169,14 @@ data/
 └── metadata/
 
 docs/
+├── assets/
+│   └── 05_mockup_frontal.png
 └── entregas/
     ├── 01_ideas_producto.md
     ├── 02_datos_necesarios.md
     ├── 03_modelo_datos.md
-    └── 04_analisis_modelado.md
+    ├── 04_analisis_modelado.md
+    └── 05_diseno_frontal.md
 
 notebooks/
 └── 01_data_exploration.ipynb
@@ -219,6 +229,9 @@ matplotlib
 ipykernel
 nbconvert
 scikit-learn
+statsmodels
+plotly
+streamlit
 ```
 
 Las versiones exactas comprobadas se encuentran fijadas en `requirements.txt`. El uso de otras versiones puede funcionar, pero no forma parte del entorno validado en esta entrega.
@@ -248,7 +261,7 @@ Instalar las dependencias dentro del entorno:
 Comprobar la instalación:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, ipykernel, nbconvert, sklearn; print('Dependencias instaladas correctamente')"
+.\.venv\Scripts\python.exe -c "import pandas, pyarrow, yaml, matplotlib, sklearn, statsmodels, plotly, streamlit; print('Dependencias instaladas correctamente')"
 ```
 
 La carpeta `.venv/` no debe subirse al repositorio.
@@ -330,37 +343,34 @@ Una ejecución correcta devuelve código `0` y actualiza:
 data/metadata/modeling_data_quality_report.md
 ```
 
-### 8. Seleccionar modelos mediante validación temporal
+### 8. Consultar la evidencia canónica y la selección B5
 
-```powershell
-.\.venv\Scripts\python.exe src/models/select_models.py
-```
-
-La selección utiliza exclusivamente `validation_1`, `validation_2` y
-`validation_3`, aplica el umbral mínimo de mejora del 5 % y mantiene el
-baseline `lag_12` como campeón actual. El test final no interviene en la
-elección. Ridge y HGB comparten el cutoff efectivo de etiquetas de train;
-el baseline no se entrena y no se ve afectado por el purge.
-
-### 9. Estado de la evaluación final
-
-La ventana de test configurada tiene estado `already_opened`. Por ello
-`evaluate_final_candidate.py` permanece protegido y no forma parte del flujo
-de ejecución vigente. Solo podrá volver a utilizarse cuando se configure
-conscientemente una futura ventana temporal realmente no utilizada.
-`evaluate_baseline.py` aplica la misma salvaguarda antes de cargar datos: su
-informe con test se conserva como evaluación histórica, mientras el baseline
-operacional se calcula en `select_models.py` solo sobre validación.
-
-Los artefactos anteriores no se regeneran y se conservan como trazabilidad
-histórica pre-point-in-time:
+La selección operacional usa el bundle ETS congelado en:
 
 ```text
-data/model_outputs/historical_pre_point_in_time_final_candidate_predictions.parquet
-data/metadata/historical_pre_point_in_time_final_candidate_evaluation_report.md
-data/metadata/historical_pre_point_in_time_final_candidate_metrics_by_split.csv
-data/metadata/historical_pre_point_in_time_final_candidate_test_by_territory.csv
-data/metadata/historical_pre_point_in_time_final_candidate_test_by_month.csv
+data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+data/metadata/ets_v2_rolling_validation_predictions.metadata.yml
+```
+
+ETS gana la regla de validación en dos de tres folds y queda como campeón
+provisional. La aplicación verifica y consume ese bundle; no lo regenera al
+arrancar. La evaluación se basa exclusivamente en validación rolling
+point-in-time y no existe una nueva ventana final intacta e independiente.
+El test histórico de Entrega 4 continúa protegido y no interviene en B5.
+
+### 9. Ejecutar el frontal Streamlit
+
+```powershell
+streamlit run app.py
+```
+
+La aplicación permite seleccionar una provincia y consultar el pronóstico del
+mes siguiente, su intervalo empírico operacional del 80 %, la posición
+histórica, la orientación de planificación, la evidencia territorial y la
+procedencia. También puede iniciarse con el ejecutable del entorno:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
 ### 10. Ejecutar las pruebas automatizadas
@@ -377,9 +387,9 @@ Ejecutar la suite:
 .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
 ```
 
-La suite actual contiene 31 pruebas automatizadas, más 5 subtests de inputs
-no disponibles, y se ejecuta también mediante GitHub Actions en cada `push` y
-`pull_request` sobre `main`.
+La suite actual contiene 287 pruebas automatizadas, más 38 subtests, y se
+ejecuta también mediante GitHub Actions en cada `push` y `pull_request` sobre
+`main`.
 
 ## Análisis exploratorio
 
@@ -461,6 +471,7 @@ docs/entregas/
 * `02_datos_necesarios.md`: identificación y evaluación de datos necesarios.
 * `03_modelo_datos.md`: arquitectura raw, processed y gold, granularidades, claves, calidad y transformaciones.
 * `04_analisis_modelado.md`: problema predictivo, dataset de modelado, baseline, modelos candidatos, backtesting temporal, resultados de validación y test, decisión final, limitaciones y alternativas.
+* `05_diseno_frontal.md`: usuario, solución de producto, mockup funcional, flujo, UX, comunicación de resultados, explicabilidad y alcance del MVP.
 
 ## Limitaciones actuales
 
@@ -469,15 +480,24 @@ docs/entregas/
 * Los datos provisionales pueden ser revisados por el INE.
 * Las variables de precios, gasto, clima y eventos todavía no están integradas.
 * El índice de presión turística es una señal descriptiva y no una medida directa de rentabilidad.
-* El mejor candidato de machine learning no supera la gate pooled del 5 %; la estabilidad entre folds se mantiene como diagnóstico interpretativo.
-* El test final ya se ha abierto y no debe reutilizarse para reajustar hiperparámetros.
-* Todavía no se han implementado intervalos de predicción ni una política operativa de selección por provincia.
+* ETS es un campeón provisional de validación: supera la regla de selección en
+  dos de tres folds, con variabilidad temporal que debe permanecer visible.
+* No existe una nueva ventana final intacta e independiente para confirmar la
+  selección y el test histórico ya abierto no debe reutilizarse.
+* La evidencia canónica usa el último vintage revisado y métricas pooled; no
+  garantiza comportamiento o cobertura individual por provincia y temporada.
+* El intervalo del 80 % es empírico y operacional, no una garantía condicional.
+* `lag_12` es fallback solo por disponibilidad y no una política de selección
+  competitiva por provincia.
 
 ## Siguientes pasos
 
-1. Diseñar el dashboard o aplicación ligera para consultar histórico, baseline, predicción y error territorial.
-2. Incorporar intervalos de predicción calculados con errores fuera de muestra.
-3. Definir reglas de fallback por provincia, mes o temporada.
-4. Analizar el periodo provisional de junio de 2025 a mayo de 2026 como seguimiento separado.
-5. Evaluar nuevas variables o familias de modelos únicamente mediante un nuevo experimento temporal independiente.
-6. Preparar la presentación académica y la demostración reproducible de la Entrega 4.
+1. Confirmar la selección únicamente cuando exista una nueva ventana final
+   intacta e independiente.
+2. Evaluar horizontes multiperiodo y cobertura por provincia y temporada.
+3. Incorporar precios, gasto, clima, eventos o datos internos del negocio con
+   disponibilidad point-in-time demostrada.
+4. Añadir escenarios what-if sin confundirlos con predicciones observadas.
+5. Estudiar autenticación, API y despliegue multiusuario si el MVP evoluciona a
+   producto operativo.
+6. Completar una auditoría formal de accesibilidad y pruebas con usuarios.
