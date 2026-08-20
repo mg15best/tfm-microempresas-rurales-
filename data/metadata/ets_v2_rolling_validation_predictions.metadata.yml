@@ -1,0 +1,249 @@
+artifact:
+  name: ets_v2_rolling_validation_predictions.parquet
+  logical_path: data/model_outputs/ets_v2_rolling_validation_predictions.parquet
+  metadata_logical_path: data/metadata/ets_v2_rolling_validation_predictions.metadata.yml
+  version: 1.0.0-b4c
+  created_at_utc: '2026-08-20T10:34:58Z'
+  official_canonical_artifact: true
+  generating_commit_sha: 3465675af079dc2c9dcfc2f89596c62144e49c76
+  row_count: 1750
+  territory_count: 50
+  origin_count: 35
+  fold_ids:
+  - validation_1
+  - validation_2
+  - validation_3
+  file_sha256: 7f8a5a44c1204b7c1bfdc5f840e1a58939f8d348ff9e97977dd5d1b0f39fd9c7
+  logical_prediction_sha256: 81515245010068b764eb27ba8bc6e32dffcbc5c590b6b823017d98f0121e8f04
+logical_hash_contract:
+  algorithm: sha256_typed_rows_v1
+  sort_columns:
+  - fold_id
+  - target_month_id
+  - territory_id
+  columns: &id001
+  - fold_id
+  - territory_id
+  - territory_name
+  - target_month_id
+  - business_origin_month_id
+  - latest_available_month_id
+  - actual
+  - baseline_prediction
+  - ets_candidate_prediction
+  - ets_raw_prediction
+  - operational_prediction
+  - candidate_available
+  - availability_fallback_used
+  - fallback_reason
+  - clipping_applied
+  - training_start
+  - training_end
+  - training_rows
+  - observed_training_rows
+  - imputed_months_n
+  - model_id
+  - cutoff_policy_id
+  serialization: SHA-256 over a JSON schema header and typed rows; strings are UTF-8
+    length-prefixed, floats are IEEE-754 float64 little-endian, integers are int64
+    little-endian, booleans are one byte, and nulls use an explicit marker. created_at
+    is excluded.
+provenance:
+  gold:
+    path: data/gold/gold_tourism_demand_monthly.parquet
+    file_sha256: 9ecf859b0db0932566dbbb4e03255020fca2960239e4160189e743d6b42e96d5
+    source_snapshot_ids:
+    - a242086118493f10988ea12418db34c840d5540c8fe0d6a59141e115d5bf11bd
+    data_versions:
+    - gold_tourism_demand_monthly_v1.0.0
+    vintage_limitation: Availability-correct point-in-time reconstruction using the
+      latest revised Gold vintage; historical release vintages are unavailable.
+  baseline_id: seasonal_naive_lag_12
+  ets_model_id: holt_winters_additive_damped_v1
+  ets_model_version: 1.0.0
+  ets_library: statsmodels
+  ets_library_version: 0.14.6
+  cutoff_policy_id: conservative_target_lag_3_v1
+  config_path: data/metadata/modeling_v2_config.yml
+  config_sha256: 2590ede12d54a71c1073c81ee46010b1b763338de9b9b2475e0961d9dc312c76
+  config_version: modeling_v2_config_b4_v1
+  code_contract_version: point_in_time_v2_b4_v1
+folds:
+- id: validation_1
+  start: 2021-06
+  end: 2022-05
+  expected_evaluable_rows: 550
+- id: validation_2
+  start: 2022-06
+  end: 2023-05
+  expected_evaluable_rows: 600
+- id: validation_3
+  start: 2023-06
+  end: 2024-05
+  expected_evaluable_rows: 600
+environment:
+  canonical:
+    runner: ubuntu-24.04
+    python: 3.14.7
+    numpy: 2.5.2
+    scipy: 1.18.0
+    pandas: 3.0.3
+    patsy: 1.0.2
+    statsmodels: 0.14.6
+    pyarrow: 24.0.0
+  actual:
+    runner: ubuntu-24.04
+    platform: Linux-6.17.0-1022-azure-x86_64-with-glibc2.39
+    python: 3.14.7
+    numpy: 2.5.2
+    scipy: 1.18.0
+    pandas: 3.0.3
+    patsy: 1.0.2
+    statsmodels: 0.14.6
+    pyarrow: 24.0.0
+  cross_platform_note: ETS is deterministic within the pinned environment, but optimized
+    floating-point results vary slightly between Windows and Linux. The Ubuntu 24.04
+    artifact is the canonical source of truth.
+storage:
+  format: parquet
+  engine: pyarrow
+  engine_version: 24.0.0
+  compression: zstd
+github:
+  github_repository: mg15best/tfm-microempresas-rurales-
+  github_ref: refs/heads/main
+  github_ref_name: main
+  github_sha: 3465675af079dc2c9dcfc2f89596c62144e49c76
+  github_run_id: '32359193026'
+  github_run_number: '1'
+  github_workflow: Freeze ETS v2 canonical predictions
+  github_event_name: workflow_dispatch
+  github_server_url: https://github.com
+  github_run_url: https://github.com/mg15best/tfm-microempresas-rurales-/actions/runs/32359193026
+schema:
+  version: ets_v2_rolling_validation_predictions_schema_v1
+  columns: *id001
+  pandas_dtypes:
+    fold_id: string
+    territory_id: string
+    territory_name: string
+    target_month_id: string
+    business_origin_month_id: string
+    latest_available_month_id: string
+    fallback_reason: string
+    training_start: string
+    training_end: string
+    model_id: string
+    cutoff_policy_id: string
+    actual: float64
+    baseline_prediction: float64
+    ets_candidate_prediction: float64
+    ets_raw_prediction: float64
+    operational_prediction: float64
+    candidate_available: bool
+    availability_fallback_used: bool
+    clipping_applied: bool
+    training_rows: int64
+    observed_training_rows: int64
+    imputed_months_n: int64
+invariants:
+  rows: 1750
+  unique_keys: 1750
+  territories: 50
+  origins: 35
+  candidate_available_rows: 1715
+  availability_fallback_rows: 35
+  fold_rows:
+    validation_1: 550
+    validation_2: 600
+    validation_3: 600
+evaluation:
+  pooled:
+    n: 1750
+    baseline_MAE: 5018.641714285714
+    candidate_MAE: 4084.574535196216
+    baseline_RMSE: 10411.374392351583
+    candidate_RMSE: 7770.827125343509
+    baseline_WAPE_pct: 24.19181664487712
+    candidate_WAPE_pct: 19.68924738072576
+    baseline_bias: -3267.999428571429
+    candidate_bias: -1862.1237643616084
+    mae_skill_pct: 18.61195184407463
+    wape_skill_pct: 18.611951844074632
+  folds:
+  - fold_id: validation_1
+    period: 2021-06/2022-05
+    candidate_available_rows: 539
+    fallback_rows: 11
+    candidate_coverage_pct: 98.0
+    n: 550
+    baseline_MAE: 9116.563636363637
+    candidate_MAE: 6204.727558505157
+    baseline_RMSE: 16454.667811127194
+    candidate_RMSE: 10406.554878167803
+    baseline_WAPE_pct: 44.59829064390372
+    candidate_WAPE_pct: 30.353568960642797
+    baseline_bias: -8782.887272727272
+    candidate_bias: -5236.1792783821675
+    mae_skill_pct: 31.94006200147512
+    wape_skill_pct: 31.940062001475113
+    outcome: win
+  - fold_id: validation_2
+    period: 2022-06/2023-05
+    candidate_available_rows: 588
+    fallback_rows: 12
+    candidate_coverage_pct: 98.0
+    n: 600
+    baseline_MAE: 3071.713333333333
+    candidate_MAE: 2899.1250806962776
+    baseline_RMSE: 6094.109334704566
+    candidate_RMSE: 5832.0868163430005
+    baseline_WAPE_pct: 14.912184104986007
+    candidate_WAPE_pct: 14.074323432978328
+    baseline_bias: -909.2533333333333
+    candidate_bias: -436.00744231511743
+    mae_skill_pct: 5.618631490255891
+    wape_skill_pct: 5.618631490255901
+    outcome: win
+  - fold_id: validation_3
+    period: 2023-06/2024-05
+    candidate_available_rows: 588
+    fallback_rows: 12
+    candidate_coverage_pct: 98.0
+    n: 600
+    baseline_MAE: 3209.141666666667
+    candidate_MAE: 3326.550384996292
+    baseline_RMSE: 5552.102021607072
+    candidate_RMSE: 6545.2420954923755
+    baseline_WAPE_pct: 15.158830829751501
+    candidate_WAPE_pct: 15.713427380468875
+    baseline_bias: -571.4316666666666
+    candidate_bias: -195.35586522258563
+    mae_skill_pct: -3.658570749591665
+    wape_skill_pct: -3.658570749591679
+    outcome: loss
+  territories:
+    count: 50
+    wins: 47
+    losses: 2
+    ties: 1
+    median_mae_skill_pct: 20.678511997844225
+  origins:
+    count: 35
+    wins: 21
+    losses: 14
+    ties: 0
+    median_mae_skill_pct: 7.244202218855295
+  screening:
+    A_pooled_mae_skill_positive: true
+    B_at_least_two_folds_positive: true
+    C_median_fold_skill_positive: true
+    D_more_than_half_provinces_positive: true
+    E_median_territorial_skill_positive: true
+    F_absolute_bias_not_worse: true
+    fold_wins: 2
+    territory_wins: 47
+    territory_win_fraction: 0.94
+    median_fold_skill_pct: 5.618631490255891
+    median_territorial_skill_pct: 20.678511997844225
+    conclusion: ETS CANDIDATE PASSES SCREENING
