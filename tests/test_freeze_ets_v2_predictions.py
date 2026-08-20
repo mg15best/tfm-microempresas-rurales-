@@ -123,6 +123,70 @@ def _github_environment(head: str) -> dict[str, str]:
     }
 
 
+def _git_text(*args: str, cwd: Path = PROJECT_ROOT) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _historical_source_repository(
+    tmp_path: Path,
+    *,
+    material_config_change: bool = False,
+) -> tuple[Path, str, str]:
+    """Crea historial real sin depender de fetch-depth ni core.autocrlf global."""
+
+    repository = tmp_path / "historical-repository"
+    repository.mkdir()
+    _git_text("init", "--quiet", cwd=repository)
+    _git_text("config", "user.email", "tests@example.invalid", cwd=repository)
+    _git_text("config", "user.name", "Tests", cwd=repository)
+    _git_text("config", "commit.gpgsign", "false", cwd=repository)
+    _git_text("config", "core.autocrlf", "false", cwd=repository)
+
+    source_head = _git_text("rev-parse", "HEAD", cwd=PROJECT_ROOT)
+    config_bytes = freeze_module._git_blob_bytes(
+        source_head, freeze_module.CONFIG_REPOSITORY_PATH
+    )
+    config = yaml.safe_load(config_bytes.decode("utf-8"))
+    gold_repository_path = str(config["source"]["path"])
+    versioned_sources = {
+        freeze_module.CONFIG_REPOSITORY_PATH: config_bytes,
+        freeze_module.REQUIREMENTS_REPOSITORY_PATH: freeze_module._git_blob_bytes(
+            source_head, freeze_module.REQUIREMENTS_REPOSITORY_PATH
+        ),
+        gold_repository_path: freeze_module._git_blob_bytes(
+            source_head, gold_repository_path
+        ),
+    }
+    for repository_path, content in versioned_sources.items():
+        target = repository / Path(*repository_path.split("/"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    _git_text("add", "--all", cwd=repository)
+    _git_text("commit", "--quiet", "-m", "generator sources", cwd=repository)
+    generator = _git_text("rev-parse", "HEAD", cwd=repository)
+
+    if material_config_change:
+        config_path = repository / Path(
+            *freeze_module.CONFIG_REPOSITORY_PATH.split("/")
+        )
+        config_path.write_bytes(config_bytes + b"\nmaterial_change_for_test: true\n")
+    else:
+        (repository / "verifier.txt").write_text(
+            "later verifier commit\n", encoding="utf-8"
+        )
+    _git_text("add", "--all", cwd=repository)
+    _git_text("commit", "--quiet", "-m", "later commit", cwd=repository)
+    current = _git_text("rev-parse", "HEAD", cwd=repository)
+    return repository, generator, current
+
+
 def test_exact_rows_unique_keys_and_same_baseline_keys(frozen_case) -> None:
     artifact = frozen_case["artifact"]
     baseline = frozen_case["baseline"]
@@ -338,6 +402,166 @@ def test_logical_hash_is_order_independent_and_deterministic(frozen_case) -> Non
     assert len(first) == 64
 
 
+def test_git_blob_reader_is_binary_safe_and_commit_scoped(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git_text("init", "--quiet", cwd=repository)
+    _git_text("config", "user.email", "tests@example.invalid", cwd=repository)
+    _git_text("config", "user.name", "Tests", cwd=repository)
+    _git_text("config", "commit.gpgsign", "false", cwd=repository)
+    payload = b"binary\x00payload\r\nwith\nnewlines\xff"
+    (repository / "payload.bin").write_bytes(payload)
+    _git_text("add", "--", "payload.bin", cwd=repository)
+    _git_text("commit", "--quiet", "-m", "fixture", cwd=repository)
+    commit_sha = _git_text("rev-parse", "HEAD", cwd=repository)
+
+    assert freeze_module._git_blob_bytes(
+        commit_sha,
+        "payload.bin",
+        repository=repository,
+    ) == payload
+
+
+@pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"], ids=["lf", "crlf"])
+def test_verify_uses_generator_blob_not_worktree_text_files(
+    frozen_case,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    line_ending: bytes,
+) -> None:
+    repository, generator, _ = _historical_source_repository(tmp_path)
+    metadata = copy.deepcopy(frozen_case["metadata"])
+    metadata["artifact"]["generating_commit_sha"] = generator
+    artifact_path, metadata_path = _write_pair(
+        tmp_path / "artifact", frozen_case, metadata=metadata
+    )
+    config_path = repository / Path(
+        *freeze_module.CONFIG_REPOSITORY_PATH.split("/")
+    )
+    config_blob = freeze_module._git_blob_bytes(
+        generator,
+        freeze_module.CONFIG_REPOSITORY_PATH,
+        repository=repository,
+    ).replace(b"\r\n", b"\n")
+    config_path.write_bytes(config_blob.replace(b"\n", line_ending))
+    requirements_path = repository / freeze_module.REQUIREMENTS_REPOSITORY_PATH
+    requirements_path.write_text("numpy==0.0.0\n", encoding="utf-8")
+    monkeypatch.setattr(freeze_module, "PROJECT_ROOT", repository)
+
+    result = verify_frozen_artifact(artifact_path, metadata_path)
+
+    assert result["generator_commit_sha"] == generator
+
+
+def test_verify_accepts_current_head_as_generator(frozen_case) -> None:
+    generator = frozen_case["metadata"]["artifact"]["generating_commit_sha"]
+    assert generator == _git_text("rev-parse", "HEAD")
+    result = verify_frozen_artifact(
+        frozen_case["artifact_path"], frozen_case["metadata_path"]
+    )
+    assert result["generator_commit_sha"] == generator
+
+
+def test_verify_accepts_accessible_historical_generator_commit(
+    frozen_case,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, generator, current = _historical_source_repository(tmp_path)
+    metadata = copy.deepcopy(frozen_case["metadata"])
+    metadata["artifact"]["generating_commit_sha"] = generator
+    artifact_path, metadata_path = _write_pair(
+        tmp_path / "artifact", frozen_case, metadata=metadata
+    )
+    monkeypatch.setattr(freeze_module, "PROJECT_ROOT", repository)
+
+    result = verify_frozen_artifact(artifact_path, metadata_path)
+
+    assert result["generator_commit_sha"] == generator
+    assert _git_text("rev-parse", "HEAD", cwd=repository) == current
+    assert current != generator
+
+
+def test_material_config_change_at_generator_is_rejected(
+    frozen_case,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, _, changed_generator = _historical_source_repository(
+        tmp_path,
+        material_config_change=True,
+    )
+    metadata = copy.deepcopy(frozen_case["metadata"])
+    metadata["artifact"]["generating_commit_sha"] = changed_generator
+    artifact_path, metadata_path = _write_pair(
+        tmp_path / "artifact", frozen_case, metadata=metadata
+    )
+    monkeypatch.setattr(freeze_module, "PROJECT_ROOT", repository)
+
+    with pytest.raises(AssertionError, match="provenance.config_sha256"):
+        verify_frozen_artifact(artifact_path, metadata_path)
+
+
+def test_verify_rejects_inaccessible_generator_commit(
+    frozen_case,
+    tmp_path: Path,
+) -> None:
+    metadata = copy.deepcopy(frozen_case["metadata"])
+    metadata["artifact"]["generating_commit_sha"] = "f" * 40
+    artifact_path, metadata_path = _write_pair(
+        tmp_path, frozen_case, metadata=metadata
+    )
+    with pytest.raises(AssertionError, match="Generator commit Git no accesible"):
+        verify_frozen_artifact(artifact_path, metadata_path)
+
+
+def test_official_generator_and_github_sha_must_be_coherent(frozen_case) -> None:
+    metadata = copy.deepcopy(frozen_case["metadata"])
+    generator = metadata["artifact"]["generating_commit_sha"]
+    metadata["artifact"]["official_canonical_artifact"] = True
+    metadata["github"] = {"github_sha": "0" * 40}
+    with pytest.raises(AssertionError, match="github.github_sha"):
+        freeze_module._resolve_artifact_generator_commit(metadata)
+    metadata["github"]["github_sha"] = generator
+    assert freeze_module._resolve_artifact_generator_commit(metadata) == generator
+
+
+def test_altered_official_generator_sha_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, generator, later_commit = _historical_source_repository(tmp_path)
+    monkeypatch.setattr(freeze_module, "PROJECT_ROOT", repository)
+    metadata = {
+        "artifact": {
+            "generating_commit_sha": later_commit,
+            "official_canonical_artifact": True,
+        },
+        "github": {"github_sha": generator},
+    }
+    with pytest.raises(AssertionError, match="github.github_sha"):
+        freeze_module._resolve_artifact_generator_commit(metadata)
+
+
+def test_gold_worktree_mismatch_requires_historical_source(tmp_path: Path) -> None:
+    gold_path = tmp_path / "gold.parquet"
+    historical = b"historical-gold-bytes"
+    gold_path.write_bytes(historical)
+    historical_sha = hashlib.sha256(historical).hexdigest()
+    freeze_module._require_worktree_file_matches_sha256(
+        gold_path,
+        historical_sha,
+        label="Gold working tree",
+    )
+    gold_path.write_bytes(b"different-gold-bytes")
+    with pytest.raises(AssertionError, match="source historico"):
+        freeze_module._require_worktree_file_matches_sha256(
+            gold_path,
+            historical_sha,
+            label="Gold working tree",
+        )
+
+
 def test_metadata_has_complete_provenance(frozen_case) -> None:
     metadata = frozen_case["metadata"]
     artifact_meta = metadata["artifact"]
@@ -348,6 +572,12 @@ def test_metadata_has_complete_provenance(frozen_case) -> None:
     assert metadata["github"] is None
     assert metadata["logical_hash_contract"]["algorithm"] == LOGICAL_HASH_ALGORITHM
     assert metadata["provenance"]["ets_library_version"] == "0.14.6"
+    generator = artifact_meta["generating_commit_sha"]
+    assert metadata["provenance"]["config_sha256"] == hashlib.sha256(
+        freeze_module._git_blob_bytes(
+            generator, freeze_module.CONFIG_REPOSITORY_PATH
+        )
+    ).hexdigest()
     assert metadata["environment"]["canonical"]["pyarrow"] == "24.0.0"
     assert metadata["storage"]["engine_version"] == "24.0.0"
     assert metadata["schema"]["columns"] == ARTIFACT_COLUMNS
@@ -360,7 +590,6 @@ def test_metadata_has_complete_provenance(frozen_case) -> None:
         (("artifact", "file_sha256"), "0" * 64),
         (("artifact", "logical_prediction_sha256"), "1" * 64),
         (("artifact", "row_count"), 1749),
-        (("artifact", "generating_commit_sha"), "2" * 40),
         (("provenance", "gold", "file_sha256"), "3" * 64),
         (("provenance", "config_sha256"), "4" * 64),
         (("provenance", "ets_model_version"), "9.9.9"),
@@ -423,7 +652,6 @@ def test_windows_without_dry_run_fails_before_writing(
 ) -> None:
     windows = {**_canonical_runtime(), "runner": "windows-11", "platform": "Windows"}
     monkeypatch.setattr(freeze_module, "runtime_environment", lambda: windows)
-    monkeypatch.setattr(freeze_module, "_git_head", lambda: "a" * 40)
     artifact_path = tmp_path / "must-not-exist.parquet"
     metadata_path = tmp_path / "must-not-exist.yml"
     with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):

@@ -40,7 +40,6 @@ try:
     )
     from src.models.modeling_v2_common import (
         PROJECT_ROOT,
-        load_modeling_v2_config,
     )
 except ModuleNotFoundError:
     from ets_v2 import build_ets_predictions
@@ -53,7 +52,7 @@ except ModuleNotFoundError:
         reproduce_baseline_in_memory,
         screen_ets_candidate,
     )
-    from modeling_v2_common import PROJECT_ROOT, load_modeling_v2_config
+    from modeling_v2_common import PROJECT_ROOT
 
 
 ARTIFACT_VERSION = "1.0.0-b4c"
@@ -63,6 +62,8 @@ DEFAULT_ARTIFACT_PATH = PROJECT_ROOT / "data" / "model_outputs" / ARTIFACT_FILEN
 DEFAULT_METADATA_PATH = PROJECT_ROOT / "data" / "metadata" / METADATA_FILENAME
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "data" / "metadata" / "modeling_v2_config.yml"
 DEFAULT_REQUIREMENTS_PATH = PROJECT_ROOT / "requirements.txt"
+CONFIG_REPOSITORY_PATH = "data/metadata/modeling_v2_config.yml"
+REQUIREMENTS_REPOSITORY_PATH = "requirements.txt"
 
 KEY_COLUMNS = ["fold_id", "territory_id", "target_month_id"]
 SORT_COLUMNS = ["fold_id", "target_month_id", "territory_id"]
@@ -163,6 +164,86 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _validate_repository_path(path: str) -> str:
+    normalized = str(path)
+    parts = normalized.split("/")
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or "\\" in normalized
+        or ":" in normalized
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise AssertionError(f"Ruta Git versionada no valida: {path!r}.")
+    return normalized
+
+
+def _validate_git_commit(
+    commit_sha: str,
+    *,
+    repository: Path | None = None,
+) -> str:
+    sha = str(commit_sha)
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise AssertionError(f"Generator commit SHA no valido: {sha!r}.")
+    root = PROJECT_ROOT if repository is None else Path(repository)
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(f"Generator commit Git no accesible: {sha}.")
+    resolved = result.stdout.decode("ascii", errors="strict").strip()
+    if resolved != sha:
+        raise AssertionError(
+            f"Generator commit Git no coincide: {resolved!r} != {sha!r}."
+        )
+    return sha
+
+
+def _git_blob_bytes(
+    commit_sha: str,
+    repository_path: str,
+    *,
+    repository: Path | None = None,
+) -> bytes:
+    """Lee un blob Git sin pasar sus bytes por conversion de texto."""
+
+    root = PROJECT_ROOT if repository is None else Path(repository)
+    sha = _validate_git_commit(commit_sha, repository=root)
+    path = _validate_repository_path(repository_path)
+    result = subprocess.run(
+        ["git", "cat-file", "blob", f"{sha}:{path}"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Blob Git no accesible en generator commit: {sha}:{path}."
+        )
+    return bytes(result.stdout)
+
+
+def _load_modeling_config_bytes(content: bytes) -> dict[str, Any]:
+    try:
+        decoded = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise AssertionError("Config Git no es UTF-8 valido.") from exc
+    config = yaml.safe_load(decoded)
+    if not isinstance(config, dict):
+        raise AssertionError("Config Git no contiene un mapping YAML.")
+    if config.get("methodology", {}).get("id") != "point_in_time_v2":
+        raise AssertionError("Config Git no declara point_in_time_v2.")
+    return config
+
+
 def _plain(value: Any) -> Any:
     if isinstance(value, pd.DataFrame):
         return [_plain(record) for record in value.to_dict(orient="records")]
@@ -185,9 +266,13 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def _read_requirement_pins(path: Path = DEFAULT_REQUIREMENTS_PATH) -> dict[str, str]:
+def _requirement_pins_from_bytes(content: bytes) -> dict[str, str]:
+    try:
+        decoded = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise AssertionError("Requirements Git no es UTF-8 valido.") from exc
     pins: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in decoded.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "==" not in line:
             continue
@@ -196,9 +281,15 @@ def _read_requirement_pins(path: Path = DEFAULT_REQUIREMENTS_PATH) -> dict[str, 
     return pins
 
 
+def _read_requirement_pins(path: Path = DEFAULT_REQUIREMENTS_PATH) -> dict[str, str]:
+    return _requirement_pins_from_bytes(path.read_bytes())
+
+
 def validate_canonical_contract(
     config: Mapping[str, Any],
     requirements_path: Path = DEFAULT_REQUIREMENTS_PATH,
+    *,
+    requirement_pins: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Comprueba que config y requirements declaran el mismo stack B4R."""
 
@@ -219,7 +310,11 @@ def validate_canonical_contract(
     }
     if canonical != expected:
         raise RuntimeError(f"Entorno canonico B4R inesperado: {canonical}")
-    pins = _read_requirement_pins(requirements_path)
+    pins = (
+        _read_requirement_pins(requirements_path)
+        if requirement_pins is None
+        else {str(key): str(value) for key, value in requirement_pins.items()}
+    )
     mismatches = {
         package: (pins.get(package), version)
         for package, version in expected.items()
@@ -725,14 +820,131 @@ def _git_head() -> str:
     return result.stdout.strip()
 
 
-def _gold_provenance(gold: pd.DataFrame, gold_path: Path) -> dict[str, Any]:
+def _resolve_artifact_generator_commit(metadata: Mapping[str, Any]) -> str:
+    artifact_meta = metadata.get("artifact")
+    if not isinstance(artifact_meta, Mapping):
+        raise AssertionError("Metadata artifact ausente.")
+    generator_sha = _validate_git_commit(
+        str(artifact_meta.get("generating_commit_sha", ""))
+    )
+    official = artifact_meta.get("official_canonical_artifact")
+    if not isinstance(official, bool):
+        raise AssertionError("official_canonical_artifact debe ser booleano.")
+    github_meta = metadata.get("github")
+    if official:
+        if not isinstance(github_meta, Mapping):
+            raise AssertionError("Artifact oficial sin contexto GitHub.")
+        github_sha = str(github_meta.get("github_sha", ""))
+        if github_sha != generator_sha:
+            raise AssertionError(
+                "Metadata github.github_sha no coincide con "
+                "artifact.generating_commit_sha."
+            )
+    elif github_meta is not None:
+        raise AssertionError(
+            "Dry-run local no debe declarar contexto GitHub oficial."
+        )
+    return generator_sha
+
+
+def _repository_worktree_path(repository_path: str) -> Path:
+    path = _validate_repository_path(repository_path)
+    resolved_root = PROJECT_ROOT.resolve()
+    resolved_path = (PROJECT_ROOT / Path(*path.split("/"))).resolve()
+    if not resolved_path.is_relative_to(resolved_root):
+        raise AssertionError(f"Ruta versionada fuera del repositorio: {path}.")
+    return resolved_path
+
+
+def _require_worktree_file_matches_sha256(
+    path: Path,
+    expected_sha256: str,
+    *,
+    label: str,
+) -> None:
+    if not path.is_file():
+        raise AssertionError(f"{label} actual no existe: {path}.")
+    actual_sha256 = _sha256_file(path)
+    if actual_sha256 != expected_sha256:
+        raise AssertionError(
+            f"{label} actual no coincide con el source del generator commit; "
+            "se requiere el source historico para reconstruir el artifact. "
+            f"actual={actual_sha256}, historico={expected_sha256}."
+        )
+
+
+def _versioned_source_context(generator_sha: str) -> dict[str, Any]:
+    """Resuelve config/requirements/Gold desde el commit que genero el artifact."""
+
+    config_bytes = _git_blob_bytes(generator_sha, CONFIG_REPOSITORY_PATH)
+    config_sha256 = _sha256_bytes(config_bytes)
+    config = _load_modeling_config_bytes(config_bytes)
+    requirements_bytes = _git_blob_bytes(
+        generator_sha, REQUIREMENTS_REPOSITORY_PATH
+    )
+    requirement_pins = _requirement_pins_from_bytes(requirements_bytes)
+    gold_repository_path = _validate_repository_path(
+        str(config["source"]["path"])
+    )
+    gold_bytes = _git_blob_bytes(generator_sha, gold_repository_path)
+    gold_sha256 = _sha256_bytes(gold_bytes)
+    gold_path = _repository_worktree_path(gold_repository_path)
+    _require_worktree_file_matches_sha256(
+        gold_path,
+        gold_sha256,
+        label="Gold working tree",
+    )
+    gold = load_gold_history(gold_path)
+    return {
+        "config": config,
+        "config_sha256": config_sha256,
+        "requirement_pins": requirement_pins,
+        "gold": gold,
+        "gold_path": gold_path,
+        "gold_repository_path": gold_repository_path,
+        "gold_sha256": gold_sha256,
+    }
+
+
+def _validate_historical_source_metadata(
+    metadata: Mapping[str, Any],
+    sources: Mapping[str, Any],
+) -> None:
+    provenance = metadata.get("provenance")
+    if not isinstance(provenance, Mapping):
+        raise AssertionError("Metadata provenance ausente.")
+    if provenance.get("config_path") != CONFIG_REPOSITORY_PATH:
+        raise AssertionError("Metadata provenance.config_path no coincide.")
+    if provenance.get("config_sha256") != sources["config_sha256"]:
+        raise AssertionError(
+            "Metadata provenance.config_sha256 no coincide con el blob Git "
+            "del generator commit."
+        )
+    gold_meta = provenance.get("gold")
+    if not isinstance(gold_meta, Mapping):
+        raise AssertionError("Metadata provenance.gold ausente.")
+    if gold_meta.get("path") != sources["gold_repository_path"]:
+        raise AssertionError("Metadata provenance.gold.path no coincide.")
+    if gold_meta.get("file_sha256") != sources["gold_sha256"]:
+        raise AssertionError(
+            "Metadata provenance.gold.file_sha256 no coincide con el blob Git "
+            "del generator commit."
+        )
+
+
+def _gold_provenance(
+    gold: pd.DataFrame,
+    gold_path: Path,
+    *,
+    file_sha256: str | None = None,
+) -> dict[str, Any]:
     snapshots = sorted(
         str(value) for value in gold["source_snapshot_id"].dropna().unique()
     )
     versions = sorted(str(value) for value in gold["data_version"].dropna().unique())
     return {
         "path": str(gold_path.relative_to(PROJECT_ROOT)).replace(os.sep, "/"),
-        "file_sha256": _sha256_file(gold_path),
+        "file_sha256": file_sha256 or _sha256_file(gold_path),
         "source_snapshot_ids": snapshots,
         "data_versions": versions,
         "vintage_limitation": VINTAGE_LIMITATION,
@@ -745,8 +957,10 @@ def build_metadata(
     artifact_path: Path,
     config: Mapping[str, Any],
     config_path: Path,
+    config_sha256: str,
     gold: pd.DataFrame,
     gold_path: Path,
+    gold_sha256: str,
     canonical_environment: Mapping[str, str],
     actual_environment: Mapping[str, str],
     official_canonical_artifact: bool,
@@ -786,7 +1000,11 @@ def build_metadata(
             ),
         },
         "provenance": {
-            "gold": _gold_provenance(gold, gold_path),
+            "gold": _gold_provenance(
+                gold,
+                gold_path,
+                file_sha256=gold_sha256,
+            ),
             "baseline_id": str(config["baseline"]["id"]),
             "ets_model_id": str(config["ets_candidate"]["id"]),
             "ets_model_version": str(config["ets_candidate"]["candidate_version"]),
@@ -796,7 +1014,7 @@ def build_metadata(
             "config_path": str(config_path.relative_to(PROJECT_ROOT)).replace(
                 os.sep, "/"
             ),
-            "config_sha256": _sha256_file(config_path),
+            "config_sha256": config_sha256,
             "config_version": str(config["provenance"]["config_version"]),
             "code_contract_version": str(
                 config["provenance"]["code_contract_version"]
@@ -909,6 +1127,10 @@ def verify_metadata_contract(
     config: Mapping[str, Any],
     gold: pd.DataFrame,
     gold_path: Path,
+    generator_commit_sha: str,
+    config_sha256: str,
+    gold_sha256: str,
+    requirement_pins: Mapping[str, str],
     invariants: Mapping[str, Any],
     evaluation: Mapping[str, Any],
 ) -> tuple[str, str]:
@@ -941,7 +1163,6 @@ def verify_metadata_contract(
     official = artifact_meta.get("official_canonical_artifact")
     if not isinstance(official, bool):
         raise AssertionError("official_canonical_artifact debe ser booleano.")
-    git_head = _git_head()
     expected_artifact = {
         "name": ARTIFACT_FILENAME,
         "logical_path": LOGICAL_ARTIFACT_PATH,
@@ -949,7 +1170,7 @@ def verify_metadata_contract(
         "version": ARTIFACT_VERSION,
         "created_at_utc": artifact_meta["created_at_utc"],
         "official_canonical_artifact": official,
-        "generating_commit_sha": git_head,
+        "generating_commit_sha": generator_commit_sha,
         "row_count": int(len(artifact)),
         "territory_count": int(artifact["territory_id"].nunique()),
         "origin_count": int(artifact["target_month_id"].nunique()),
@@ -977,17 +1198,19 @@ def verify_metadata_contract(
     )
 
     expected_provenance = {
-        "gold": _gold_provenance(gold, gold_path),
+        "gold": _gold_provenance(
+            gold,
+            gold_path,
+            file_sha256=gold_sha256,
+        ),
         "baseline_id": str(config["baseline"]["id"]),
         "ets_model_id": str(config["ets_candidate"]["id"]),
         "ets_model_version": str(config["ets_candidate"]["candidate_version"]),
         "ets_library": str(config["ets_candidate"]["library"]),
         "ets_library_version": str(config["ets_candidate"]["library_version"]),
         "cutoff_policy_id": str(config["cutoff_policy"]["id"]),
-        "config_path": str(DEFAULT_CONFIG_PATH.relative_to(PROJECT_ROOT)).replace(
-            os.sep, "/"
-        ),
-        "config_sha256": _sha256_file(DEFAULT_CONFIG_PATH),
+        "config_path": CONFIG_REPOSITORY_PATH,
+        "config_sha256": config_sha256,
         "config_version": str(config["provenance"]["config_version"]),
         "code_contract_version": str(
             config["provenance"]["code_contract_version"]
@@ -996,8 +1219,11 @@ def verify_metadata_contract(
     _assert_metadata_equal("provenance", metadata["provenance"], expected_provenance)
     _assert_metadata_equal("folds", metadata["folds"], _expected_fold_metadata(config))
 
-    canonical = validate_canonical_contract(config)
-    expected_runtime = {**canonical, "pyarrow": _read_requirement_pins()["pyarrow"]}
+    canonical = validate_canonical_contract(
+        config,
+        requirement_pins=requirement_pins,
+    )
+    expected_runtime = {**canonical, "pyarrow": requirement_pins["pyarrow"]}
     environment_meta = metadata.get("environment")
     if not isinstance(environment_meta, Mapping):
         raise AssertionError("Metadata environment ausente.")
@@ -1051,7 +1277,7 @@ def verify_metadata_contract(
             "github_repository": EXPECTED_GITHUB_REPOSITORY,
             "github_ref": EXPECTED_GITHUB_REF,
             "github_ref_name": EXPECTED_GITHUB_REF_NAME,
-            "github_sha": git_head,
+            "github_sha": generator_commit_sha,
             "github_run_id": run_id,
             "github_run_number": run_number,
             "github_workflow": EXPECTED_GITHUB_WORKFLOW,
@@ -1105,12 +1331,17 @@ def freeze_predictions(
 ) -> dict[str, Any]:
     """Genera parquet + YAML; fuera de Ubuntu solo permite tmp explicito."""
 
-    config = load_modeling_v2_config()
-    canonical = validate_canonical_contract(config)
-    actual = runtime_environment()
-    pyarrow_pin = _read_requirement_pins()["pyarrow"]
-    expected_runtime = {**canonical, "pyarrow": pyarrow_pin}
     git_head = _git_head()
+    sources = _versioned_source_context(git_head)
+    config = sources["config"]
+    requirement_pins = sources["requirement_pins"]
+    canonical = validate_canonical_contract(
+        config,
+        requirement_pins=requirement_pins,
+    )
+    actual = runtime_environment()
+    pyarrow_pin = requirement_pins["pyarrow"]
+    expected_runtime = {**canonical, "pyarrow": pyarrow_pin}
     is_official, github_context = resolve_generation_context(
         expected_runtime=expected_runtime,
         actual_runtime=actual,
@@ -1125,9 +1356,8 @@ def freeze_predictions(
                     "Un dry-run no canonico solo puede escribir fuera del repositorio."
                 )
 
-    source_path = Path(str(config["source"]["path"]))
-    gold_path = source_path if source_path.is_absolute() else PROJECT_ROOT / source_path
-    gold = load_gold_history(gold_path)
+    gold_path = sources["gold_path"]
+    gold = sources["gold"]
     artifact, _, invariants, evaluation = generate_frozen_artifact_in_memory(
         gold, config
     )
@@ -1144,8 +1374,10 @@ def freeze_predictions(
         artifact_path=artifact_path,
         config=config,
         config_path=DEFAULT_CONFIG_PATH,
+        config_sha256=sources["config_sha256"],
         gold=gold,
         gold_path=gold_path,
+        gold_sha256=sources["gold_sha256"],
         canonical_environment=expected_runtime,
         actual_environment=actual,
         official_canonical_artifact=is_official,
@@ -1168,15 +1400,17 @@ def verify_frozen_artifact(
 ) -> dict[str, Any]:
     """Verifica hashes, metadata e invariantes sin volver a ajustar ETS."""
 
-    config = load_modeling_v2_config()
     metadata = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
     if not isinstance(metadata, Mapping):
         raise AssertionError("Metadata YAML no contiene un mapping.")
+    generator_commit_sha = _resolve_artifact_generator_commit(metadata)
+    sources = _versioned_source_context(generator_commit_sha)
+    _validate_historical_source_metadata(metadata, sources)
+    config = sources["config"]
     artifact = pd.read_parquet(artifact_path)
     validate_original_artifact_schema(artifact)
-    source_path = Path(str(config["source"]["path"]))
-    gold_path = source_path if source_path.is_absolute() else PROJECT_ROOT / source_path
-    gold = load_gold_history(gold_path)
+    gold_path = sources["gold_path"]
+    gold = sources["gold"]
     baseline = reproduce_baseline_in_memory(gold, config)["comparable_predictions"]
     invariants = validate_frozen_artifact(artifact, baseline, config)
     evaluation = reconstruct_artifact_evaluation(artifact, config)
@@ -1187,12 +1421,17 @@ def verify_frozen_artifact(
         config=config,
         gold=gold,
         gold_path=gold_path,
+        generator_commit_sha=generator_commit_sha,
+        config_sha256=sources["config_sha256"],
+        gold_sha256=sources["gold_sha256"],
+        requirement_pins=sources["requirement_pins"],
         invariants=invariants,
         evaluation=evaluation,
     )
     return {
         "file_sha256": actual_file,
         "logical_prediction_sha256": actual_logical,
+        "generator_commit_sha": generator_commit_sha,
         "invariants": invariants,
         "evaluation": evaluation["summary"],
     }
