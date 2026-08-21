@@ -643,7 +643,7 @@ def make_history_figure(chart: HistoryChartData) -> go.Figure:
         )
     )
     figure.update_layout(
-        height=430,
+        height=350,
         hovermode="closest",
         legend={"orientation": "h", "y": 1.12, "x": 0},
         margin={"l": 20, "r": 20, "t": 55, "b": 20},
@@ -763,80 +763,161 @@ def build_download_csv(view: ForecastViewModel) -> bytes:
     return output.getvalue().encode("utf-8-sig")
 
 
+def _apply_dashboard_style() -> None:
+    """Ajusta densidad y ancho sin imponer una paleta sobre el tema activo."""
+
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 1520px;
+            padding-top: 1.35rem;
+            padding-bottom: 2.5rem;
+        }
+        div[data-testid="stMetric"] {
+            min-height: 5rem;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.55rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_temporal_context(view: ForecastViewModel) -> None:
-    available_column, query_column = st.columns(2)
-    available_column.markdown(
-        "**Datos oficiales disponibles hasta**  \n"
-        f"{format_spanish_month(view.latest_available_month_id)}"
+    st.caption(
+        f"Consulta: {format_spanish_date(view.as_of_date)}  ·  "
+        "Datos oficiales hasta: "
+        f"{format_spanish_month(view.latest_available_month_id)}  ·  "
+        f"Mes objetivo: {format_spanish_month(view.target_month_id)}  ·  "
+        "Horizonte: un mes  ·  Alcance: señal provincial"
     )
-    query_column.markdown(
-        "**Fecha de consulta**  \n"
-        f"{format_spanish_date(view.as_of_date)}"
-    )
+
+
+def _render_kpi_card(
+    column: Any,
+    *,
+    label: str,
+    value: str,
+    caption: str,
+    help_text: str | None = None,
+) -> None:
+    with column:
+        with st.container(border=True):
+            st.metric(label, value, help=help_text)
+            st.caption(caption)
 
 
 def _render_analytical_warnings(view: ForecastViewModel) -> None:
-    for warning in view.warnings:
-        if warning.code not in {
-            "provisional_reference_data",
-            "availability_fallback_used",
-        }:
-            st.warning(warning.message, icon="⚠️")
+    messages: list[str] = []
+    if view.fallback_used:
+        messages.append(
+            "ETS no está disponible con este histórico; se usa como "
+            "respaldo el dato del mismo mes del año anterior."
+        )
+    messages.extend(
+        warning.message
+        for warning in view.warnings
+        if warning.code != "availability_fallback_used"
+    )
+    if not view.interval_available:
+        messages.append(
+            "El intervalo empírico no está disponible con la calibración "
+            "actual; la previsión puntual se mantiene."
+        )
+
+    with st.container(border=True):
+        st.markdown("#### Avisos de lectura")
+        if messages:
+            unique_messages = tuple(dict.fromkeys(messages))
+            st.warning(
+                "\n".join(f"- {message}" for message in unique_messages),
+                icon="⚠️",
+            )
+        else:
+            st.success("Sin avisos adicionales para esta consulta.")
 
 
 def _render_primary_result(view: ForecastViewModel) -> None:
-    st.subheader(
-        "Previsión provincial para "
-        f"{format_spanish_month(view.target_month_id)}"
+    st.markdown("### Resumen ejecutivo")
+    compact_activity = {
+        "low": "Por debajo",
+        "usual": "En rango habitual",
+        "high": "Por encima",
+        "insufficient": "Sin histórico suficiente",
+    }[view.activity_level]
+    target_period = pd.Period(view.target_month_id, freq="M")
+    compact_target = (
+        f"{SPANISH_MONTHS[target_period.month - 1][:3]}. "
+        f"{target_period.year}"
     )
-    forecast_column, level_column = st.columns([2, 1])
-    forecast_column.metric(
-        "Pernoctaciones previstas en turismo rural",
-        format_spanish_number(view.forecast_value),
+    interval_value = (
+        f"{format_spanish_number(view.interval_lower)} – "
+        f"{format_spanish_number(view.interval_upper)}"
+        if view.interval_available
+        else "No disponible"
     )
-    level_column.markdown("**Posición frente al histórico comparable**")
-    level_column.markdown(
-        f"**{format_activity_level(view.activity_level)}**"
+    interval_caption = (
+        "Rango empírico; no es una garantía."
+        if view.interval_available
+        else "Intervalo no disponible; el punto sigue válido."
     )
-    level_column.write(
-        "Comparación con el mismo mes de años históricos comparables."
+    model_value = "lag-12" if view.fallback_used else "ETS"
+    model_caption = (
+        "Respaldo utilizado solo por disponibilidad."
+        if view.fallback_used
+        else "Campeón provisional de validación."
     )
-
-    with st.container(border=True):
-        st.markdown("**Intervalo predictivo empírico al 80 %**")
-        if view.interval_available:
-            st.write(
-                f"De **{format_spanish_number(view.interval_lower)}** a "
-                f"**{format_spanish_number(view.interval_upper)}** "
-                "pernoctaciones, alrededor de la previsión puntual."
-            )
-        else:
-            st.write(
-                "Intervalo no disponible con la información de calibración "
-                "actual. La previsión puntual sigue siendo válida."
-            )
-        st.caption(
-            "Representa un rango empírico de incertidumbre construido con "
-            "errores de validación temporal. No garantiza que el valor real "
-            "quede dentro del rango."
-        )
-
-    if view.fallback_used:
-        st.warning(
-            "Para esta provincia no fue posible generar la estimación ETS "
-            "con el histórico disponible. Se utiliza como respaldo el valor "
-            "del mismo mes del año anterior.",
-            icon="⚠️",
-        )
+    (
+        forecast_column,
+        interval_column,
+        position_column,
+        model_column,
+        target_column,
+    ) = st.columns(5, gap="small")
+    _render_kpi_card(
+        forecast_column,
+        label="Pronóstico puntual",
+        value=format_spanish_number(view.forecast_value),
+        caption="Pernoctaciones provinciales.",
+    )
+    _render_kpi_card(
+        interval_column,
+        label="Intervalo empírico 80 %",
+        value=interval_value,
+        caption=interval_caption,
+    )
+    _render_kpi_card(
+        position_column,
+        label="Posición histórica",
+        value=compact_activity,
+        caption=(
+            "Frente a lo habitual · mismo mes · "
+            f"{view.historical_sample_size} años."
+        ),
+    )
+    _render_kpi_card(
+        model_column,
+        label="Modelo realmente usado",
+        value=model_value,
+        caption=model_caption,
+        help_text=view.actual_model_used,
+    )
+    _render_kpi_card(
+        target_column,
+        label="Mes objetivo",
+        value=compact_target,
+        caption=(
+            "Datos disponibles hasta "
+            f"{format_spanish_month(view.latest_available_month_id)}."
+        ),
+    )
 
 
 def _render_guidance(view: ForecastViewModel) -> None:
-    st.subheader("Orientación para la planificación")
-    st.write(
-        "Orientación basada en una regla histórica para contrastar con "
-        "reservas propias, capacidad, eventos y contexto local; no es una orden "
-        "automatizada."
-    )
+    st.markdown("#### Orientación para la planificación")
     if view.action_guidance:
         st.info(view.action_guidance, icon="ℹ️")
     else:
@@ -844,11 +925,19 @@ def _render_guidance(view: ForecastViewModel) -> None:
             "No hay suficiente contexto histórico para ofrecer orientación.",
             icon="ℹ️",
         )
+    st.caption(
+        "Señal de apoyo: contrástala con reservas, capacidad, personal, "
+        "eventos y contexto propio antes de decidir."
+    )
 
 
 def _render_history(view: ForecastViewModel) -> None:
-    st.subheader("Histórico provincial")
-    st.write(build_history_summary(view))
+    st.markdown("#### Evolución provincial y previsión")
+    st.caption(
+        "Histórico point-in-time hasta "
+        f"{format_spanish_month(view.latest_available_month_id)}. "
+        "Los huecos permanecen visibles y la previsión se muestra separada."
+    )
     figure = make_history_figure(view.chart)
     st.plotly_chart(
         figure,
@@ -862,26 +951,106 @@ def _render_history(view: ForecastViewModel) -> None:
 
 
 def _render_interpretation(view: ForecastViewModel) -> None:
-    st.subheader("Posición frente al histórico")
-    st.caption(
-        "Esta posición histórica es distinta del intervalo predictivo."
+    with st.expander("Detalle del histórico comparable"):
+        st.caption(
+            "La posición histórica es distinta del intervalo predictivo."
+        )
+        st.write(build_history_summary(view))
+        st.write(
+            format_percentile_position(view.historical_percentile_pct) + "."
+        )
+        median_column, sample_column = st.columns(2)
+        median_column.metric(
+            "Mediana de los meses comparables",
+            (
+                format_spanish_number(view.historical_median)
+                if view.historical_median is not None
+                else "No disponible"
+            ),
+        )
+        sample_column.metric(
+            "Años comparables",
+            str(view.historical_sample_size),
+        )
+
+
+def _render_quick_read(view: ForecastViewModel) -> None:
+    with st.container(border=True):
+        st.markdown("#### Lectura rápida")
+        st.write(
+            f"**Qué:** pernoctaciones provinciales de turismo rural.  \n"
+            f"**Dónde:** {view.territory_name}.  \n"
+            f"**Cuándo:** {format_spanish_month(view.target_month_id)}."
+        )
+        st.write(
+            f"**Resultado:** {format_spanish_number(view.forecast_value)}; "
+            f"{format_activity_level(view.activity_level).casefold()}."
+        )
+        st.caption(
+            format_percentile_position(view.historical_percentile_pct) + "."
+        )
+        st.divider()
+        st.caption(
+            "La señal es provincial: no estima reservas, ingresos ni demanda "
+            "de un establecimiento concreto."
+        )
+
+
+def _render_validation_summary(view: ForecastViewModel) -> None:
+    with st.container(border=True):
+        st.markdown("#### Validación resumida")
+        wape_column, mae_column = st.columns(2)
+        wape_column.metric(
+            "Error WAPE en validación",
+            format_spanish_percent(view.validation_wape_pct),
+        )
+        mae_column.metric(
+            "Error absoluto medio",
+            format_spanish_number(view.validation_mae, 1),
+        )
+        st.markdown("**ETS: campeón provisional de validación**")
+        st.caption(
+            "ETS fue seleccionado con validación temporal point-in-time; "
+            "todavía sin un nuevo test final independiente."
+        )
+
+
+def _render_dashboard_body(view: ForecastViewModel) -> None:
+    chart_column, context_column = st.columns(
+        [1.75, 1],
+        gap="large",
+        vertical_alignment="top",
     )
-    st.write(
-        format_percentile_position(view.historical_percentile_pct) + "."
+    with chart_column:
+        with st.container(border=True):
+            _render_history(view)
+            _render_guidance(view)
+    with context_column:
+        _render_quick_read(view)
+        _render_analytical_warnings(view)
+        _render_validation_summary(view)
+
+
+def _render_secondary_detail(view: ForecastViewModel) -> None:
+    st.markdown("### Detalle y trazabilidad")
+    validation_column, methodology_column, export_column = st.columns(
+        [1, 1.25, 0.75],
+        gap="medium",
+        vertical_alignment="top",
     )
-    median_column, sample_column = st.columns(2)
-    median_column.metric(
-        "Mediana de los meses comparables",
-        (
-            format_spanish_number(view.historical_median)
-            if view.historical_median is not None
-            else "No disponible"
-        ),
-    )
-    sample_column.metric(
-        "Años comparables",
-        str(view.historical_sample_size),
-    )
+    with validation_column:
+        _render_secondary_metrics(view)
+        _render_interpretation(view)
+    with methodology_column:
+        _render_methodology(view)
+    with export_column:
+        with st.container(border=True):
+            st.markdown("#### Exportación")
+            st.caption(
+                "Descarga el resultado, su intervalo, warnings y linaje para "
+                "conservar o compartir la consulta."
+            )
+            _render_download(view)
 
 
 def _render_secondary_metrics(view: ForecastViewModel) -> None:
@@ -1052,13 +1221,18 @@ def render_app(
         page_icon="🌿",
         layout="wide",
     )
-    st.title("Planificación de demanda turística rural")
-    st.caption(
-        "Previsión provincial de pernoctaciones en turismo rural para apoyar "
-        "la planificación del próximo mes. Úsala como señal de contexto "
-        "junto con tus reservas, capacidad, eventos locales y conocimiento "
-        "del negocio; no estima la demanda de un establecimiento concreto."
+    _apply_dashboard_style()
+    title_column, selector_column = st.columns(
+        [2.5, 1],
+        gap="large",
+        vertical_alignment="bottom",
     )
+    with title_column:
+        st.title("Planificación turística rural")
+        st.caption(
+            "Pronóstico provincial de pernoctaciones, incertidumbre y "
+            "contexto histórico para preparar el próximo mes."
+        )
 
     try:
         effective_resources = resources or load_app_resources()
@@ -1072,12 +1246,13 @@ def render_app(
         _render_blocking_error(format_error_message("load"))
         return
 
-    selected = st.selectbox(
-        "Provincia",
-        options=options,
-        format_func=lambda option: option.territory_name,
-        key="territory_selector",
-    )
+    with selector_column:
+        selected = st.selectbox(
+            "Provincia",
+            options=options,
+            format_func=lambda option: option.territory_name,
+            key="territory_selector",
+        )
     if selected is None:
         _render_blocking_error("Selecciona una provincia para continuar.")
         return
@@ -1120,10 +1295,5 @@ def render_app(
 
     _render_temporal_context(view)
     _render_primary_result(view)
-    _render_analytical_warnings(view)
-    _render_guidance(view)
-    _render_history(view)
-    _render_interpretation(view)
-    _render_secondary_metrics(view)
-    _render_methodology(view)
-    _render_download(view)
+    _render_dashboard_body(view)
+    _render_secondary_detail(view)

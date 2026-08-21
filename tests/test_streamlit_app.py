@@ -366,18 +366,30 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertEqual(app.selectbox[0].label, "Provincia")
         self.assertEqual(len(app.selectbox[0].options), 50)
         metric_labels = {metric.label for metric in app.metric}
-        self.assertIn(
-            "Pernoctaciones previstas en turismo rural",
-            metric_labels,
+        self.assertTrue(
+            {
+                "Pronóstico puntual",
+                "Intervalo empírico 80 %",
+                "Posición histórica",
+                "Modelo realmente usado",
+                "Mes objetivo",
+            }.issubset(metric_labels)
         )
         self.assertNotIn("Error histórico WAPE", metric_labels)
 
-        subheaders = [item.value for item in app.subheader]
+        dashboard_headings = [
+            item.value
+            for item in app.markdown
+            if str(item.value).startswith("#")
+        ]
         self.assertLess(
-            subheaders.index("Orientación para la planificación"),
-            subheaders.index("Histórico provincial"),
+            dashboard_headings.index("### Resumen ejecutivo"),
+            dashboard_headings.index("#### Evolución provincial y previsión"),
         )
-        self.assertIn("Posición frente al histórico", subheaders)
+        self.assertLess(
+            dashboard_headings.index("#### Evolución provincial y previsión"),
+            dashboard_headings.index("### Detalle y trazabilidad"),
+        )
 
         visible_text = " ".join(
             str(item.value)
@@ -385,16 +397,18 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
                 "caption",
                 "info",
                 "markdown",
-                "subheader",
+                "metric",
                 "warning",
             )
             for item in app.get(kind)
         )
-        self.assertIn("Por encima de lo habitual", visible_text)
+        self.assertIn("por encima de lo habitual", visible_text.casefold())
         self.assertIn("Error WAPE en validación", visible_text)
-        self.assertIn("Intervalo predictivo empírico al 80 %", visible_text)
         self.assertIn("seleccionado provisionalmente", visible_text)
         self.assertIn("distinta del intervalo predictivo", visible_text)
+        self.assertIn("Lectura rápida", visible_text)
+        self.assertIn("Avisos de lectura", visible_text)
+        self.assertIn("señal es provincial", visible_text)
         self.assertNotIn("precisión", visible_text.casefold())
         self.assertNotIn("confidence", visible_text.casefold())
         self.assertNotIn("Mes de referencia (t-12)", visible_text)
@@ -406,13 +420,14 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
             visible_text,
         )
 
-        self.assertEqual(len(app.warning), 2)
+        self.assertEqual(len(app.warning), 1)
         self.assertGreaterEqual(len(app.info), 2)
         self.assertEqual(len(app.get("plotly_chart")), 1)
         self.assertEqual(
             [item.label for item in app.expander],
             [
                 "Resultados en validación temporal canónica",
+                "Detalle del histórico comparable",
                 "Metodología y trazabilidad",
             ],
         )
@@ -426,9 +441,14 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
 
         self.assertEqual(list(app.exception), [])
         visible_warnings = " ".join(item.value for item in app.warning)
-        self.assertIn("no fue posible generar la estimación ETS", visible_warnings)
+        self.assertIn("ETS no está disponible con este histórico", visible_warnings)
         self.assertIn("mismo mes del año anterior", visible_warnings)
+        self.assertIn("dato de referencia utilizado es provisional", visible_warnings)
         self.assertNotIn("training_gap_unsupported", visible_warnings)
+        model_metric = next(
+            item for item in app.metric if item.label == "Modelo realmente usado"
+        )
+        self.assertEqual(model_metric.value, "lag-12")
 
     def test_interval_unavailable_copy_does_not_block_point(self) -> None:
         script = dedent(
@@ -466,7 +486,7 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         )
         self.assertIn("Intervalo no disponible", text)
         self.assertIn(
-            "Pernoctaciones previstas en turismo rural",
+            "Pronóstico puntual",
             [item.label for item in app.metric],
         )
 
@@ -584,8 +604,8 @@ class TestStreamlitControlledStates(unittest.TestCase):
 
         self.assertEqual(list(app.exception), [])
         self.assertIn(
-            "Contexto histórico insuficiente",
-            " ".join(item.value for item in app.markdown),
+            "contexto histórico insuficiente",
+            " ".join(item.value for item in app.markdown).casefold(),
         )
         self.assertTrue(
             any("suficiente histórico" in item.value for item in app.warning)

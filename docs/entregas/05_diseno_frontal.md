@@ -51,15 +51,14 @@ control.
 ### 1.4. Tipo de producto
 
 El MVP es una aplicación operativa de apoyo a la planificación, construida con
-Streamlit y Plotly. Presenta un selector provincial y compone una vista de
-lectura progresiva:
+Streamlit y Plotly. Presenta un selector provincial y compone una vista
+ejecutiva de lectura progresiva:
 
-1. disponibilidad y fecha de consulta;
-2. mes objetivo y pronóstico puntual;
-3. intervalo empírico operacional del 80 %;
-4. posición frente a la historia comparable;
-5. orientación de planificación;
-6. histórico y evidencia secundaria del modelo.
+1. cabecera y contexto temporal de la consulta;
+2. resumen horizontal con pronóstico, intervalo, posición, modelo y objetivo;
+3. gráfico principal y orientación de planificación;
+4. lectura rápida, avisos y validación resumida;
+5. evidencia secundaria, trazabilidad y exportación desplegables.
 
 ### 1.5. Resultado y acción principal
 
@@ -94,11 +93,11 @@ visible es un pronóstico puntual de 7.795 pernoctaciones, una posición histór
 12.311.
 
 El encuadre prioriza la tarea principal: propósito, selector, corte de datos,
-mes objetivo, resultado, incertidumbre, contexto y acción recomendada. La vista
-real continúa bajo el pliegue con el gráfico Plotly del histórico y el
-pronóstico, las métricas provinciales de validación canónica, la metodología y
-procedencia desplegables y la descarga CSV. Estos elementos son funcionales,
-pero se mantienen en un nivel secundario para no competir con la decisión.
+mes objetivo, cinco tarjetas de resumen y un cuerpo en dos columnas. El gráfico
+Plotly y la orientación ocupan el panel principal; la lectura rápida, los avisos
+y la validación resumida forman el panel lateral. Las métricas ampliadas, el
+histórico comparable, la metodología, la procedencia y la descarga permanecen
+desplegables bajo ese nivel ejecutivo para no competir con la decisión.
 
 ### 2.2. Elementos representados
 
@@ -172,8 +171,9 @@ puede cambiar de territorio y reintentar sin perder el contexto general.
 
 ### 3.3. Experiencia de usuario
 
-* **Jerarquía:** una única columna narrativa sitúa primero la selección y el
-  resultado y después el detalle analítico.
+* **Jerarquía:** una cabecera compacta y cinco KPIs preceden a un cuerpo en dos
+  columnas; el gráfico y la orientación dominan la lectura y el detalle
+  analítico queda plegado debajo.
 * **Simplicidad:** el único input necesario es la provincia; las fechas se
   derivan del corte point-in-time disponible.
 * **Legibilidad:** unidades, meses y etiquetas semánticas acompañan a las cifras
