@@ -10,7 +10,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
@@ -36,5 +43,8 @@ jobs:
           print('patsy=' + patsy.__version__);
           print('statsmodels=' + statsmodels.__version__)"
 
+      - name: Validate Gold data
+        run: python src/data/validate_gold.py
+
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q -p no:cacheprovider

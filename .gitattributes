@@ -1,0 +1,10 @@
+data/raw/** -text whitespace=cr-at-eol
+
+.gitattributes text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+
+*.parquet -text
+*.png -text

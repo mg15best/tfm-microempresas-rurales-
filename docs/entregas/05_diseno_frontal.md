@@ -75,7 +75,9 @@ La variable pronosticada son las pernoctaciones mensuales provinciales en
 alojamientos de turismo rural. Una provincia no equivale a un establecimiento:
 el producto no predice sus reservas, ingresos, facturación ni rentabilidad. El
 horizonte implementado es de un mes y no incorpora todavía información interna
-del negocio, precios, clima o eventos.
+del negocio, precios, clima o eventos. Cuando el ajuste ETS consume
+observaciones provisionales del INE, la interfaz lo comunica porque esos datos
+oficiales pueden revisarse.
 
 ## 2. Imagen mockup del frontal
 
@@ -84,7 +86,7 @@ del negocio, precios, clima o eventos.
 ### 2.1. Pantalla principal
 
 La imagen es una captura del frontal real, no una composición gráfica ajena a
-la implementación. Representa una consulta de **Araba/Álava** realizada el 20
+la implementación. Representa una consulta de **Araba/Álava** realizada el 21
 de agosto de 2026. La aplicación informa de que los datos están disponibles
 hasta junio de 2026 y muestra septiembre de 2026 como mes objetivo. El resultado
 visible es un pronóstico puntual de 7.795 pernoctaciones, una posición histórica

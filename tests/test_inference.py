@@ -172,8 +172,60 @@ class TestOperationalInferenceB5(unittest.TestCase):
         self.assertTrue(np.isfinite(result.predicted_overnight_stays_total))
         self.assertGreaterEqual(result.predicted_overnight_stays_total, 0)
         self.assertTrue(result.is_operational)
+        self.assertIn(
+            "provisional_training_data",
+            {warning.code for warning in result.warnings},
+        )
         with self.assertRaises(FrozenInstanceError):
             result.fallback_used = True
+
+    def test_historical_ets_without_provisional_training_has_no_warning(
+        self,
+    ) -> None:
+        result = self.predict_with(
+            ets_result(available=True, target="2025-09", cutoff="2025-06"),
+            as_of_date="2025-08-20",
+        )
+
+        self.assertEqual(result.actual_model_used, SELECTED_MODEL_ID)
+        self.assertNotIn(
+            "provisional_training_data",
+            {warning.code for warning in result.warnings},
+        )
+
+    def test_future_provisional_data_cannot_activate_training_warning(
+        self,
+    ) -> None:
+        forecast = ets_result(
+            available=True,
+            target="2025-09",
+            cutoff="2025-06",
+        )
+        baseline = self.predict_with(
+            forecast,
+            as_of_date="2025-08-20",
+        )
+        changed = self.dataframe.copy()
+        future = (
+            changed["territory_id"].eq("ES-PROV-01")
+            & changed["month_id"].gt("2025-06")
+        )
+        changed.loc[future, "is_provisional"] = True
+        mutated = self.predict_with(
+            forecast,
+            dataframe=changed,
+            as_of_date="2025-08-20",
+        )
+
+        self.assertEqual(
+            mutated.predicted_overnight_stays_total,
+            baseline.predicted_overnight_stays_total,
+        )
+        self.assertEqual(mutated.warnings, baseline.warnings)
+        self.assertNotIn(
+            "provisional_training_data",
+            {warning.code for warning in mutated.warnings},
+        )
 
     def test_training_end_never_exceeds_information_cutoff(self) -> None:
         result = self.predict_with(ets_result(available=True))
@@ -451,6 +503,10 @@ class TestOperationalInferenceB5(unittest.TestCase):
             "provisional_reference_data",
             {warning.code for warning in result.warnings},
         )
+        self.assertNotIn(
+            "provisional_training_data",
+            {warning.code for warning in result.warnings},
+        )
 
     def test_invalid_territory_is_blocking_before_fit(self) -> None:
         with (
@@ -538,6 +594,10 @@ class TestOperationalInferenceIntegration(unittest.TestCase):
         self.assertLessEqual(
             pd.Period(result.training_end, freq="M"),
             pd.Period(result.latest_available_month_id, freq="M"),
+        )
+        self.assertIn(
+            "provisional_training_data",
+            {warning.code for warning in result.warnings},
         )
 
     def test_current_gold_badajoz_is_structural_availability_fallback(self) -> None:

@@ -85,6 +85,10 @@ ACTIVITY_LABELS = {
 }
 
 WARNING_MESSAGES = {
+    "provisional_training_data": (
+        "La estimación ETS utiliza datos provisionales del INE que pueden "
+        "revisarse."
+    ),
     "provisional_reference_data": (
         "El dato de referencia utilizado es provisional y puede ser "
         "revisado por el INE."

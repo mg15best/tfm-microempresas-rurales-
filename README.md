@@ -140,7 +140,7 @@ La clave principal es:
 territory_id + month_id
 ```
 
-Los datos desde junio de 2025 hasta mayo de 2026 están marcados como
+Los datos desde julio de 2025 hasta junio de 2026 están marcados como
 provisionales. El último mes disponible en la tabla gold es junio de 2026.
 
 Los meses `2020-04`, `2020-05` y `2020-11` no contienen observaciones provinciales publicadas. No se rellenan con cero.
@@ -161,12 +161,13 @@ Estos resultados son agregados territoriales y no representan la demanda o renta
 ## Estructura del repositorio
 
 ```text
-app/
+app.py
 data/
 ├── raw/
 ├── processed/
 ├── gold/
-└── metadata/
+├── metadata/
+└── model_outputs/
 
 docs/
 ├── assets/
@@ -185,6 +186,9 @@ reports/
 └── figures/
 
 src/
+├── application/
+│   ├── forecast_service.py
+│   └── decision_support.py
 ├── data/
 │   ├── download_sources.py
 │   ├── normalize_sources.py
@@ -198,15 +202,22 @@ src/
 │   ├── modeling_common.py
 │   ├── evaluate_baseline.py
 │   ├── select_models.py
-│   └── evaluate_final_candidate.py
+│   ├── ets_v2.py
+│   ├── inference.py
+│   └── prediction_intervals_v2.py
 └── visualization/
+    ├── dashboard_data.py
+    └── streamlit_app.py
 
 tests/
 ├── test_build_gold.py
-├── test_build_modeling_dataset.py
-├── test_modeling_common.py
-├── test_select_models.py
-└── test_evaluate_final_candidate.py
+├── test_ets_v2.py
+├── test_inference.py
+├── test_prediction_intervals_v2.py
+├── test_forecast_service.py
+├── test_decision_support.py
+├── test_dashboard_data.py
+└── test_streamlit_app.py
 
 requirements.txt
 README.md

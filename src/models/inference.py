@@ -454,6 +454,40 @@ def _validate_ets_result(
         raise InferenceDataError("training_end ETS supera el cutoff point-in-time.")
 
 
+def _ets_training_uses_provisional_data(
+    history: pd.DataFrame,
+    forecast: ETSForecastResult,
+) -> bool:
+    """Detecta inputs provisionales observados en el training ETS real."""
+
+    if not forecast.candidate_available:
+        return False
+    if forecast.training_start is None or forecast.training_end is None:
+        raise InferenceDataError(
+            "El ETS disponible no declara su intervalo de entrenamiento."
+        )
+
+    start = pd.Period(forecast.training_start, freq="M")
+    end = pd.Period(forecast.training_end, freq="M")
+    months = pd.PeriodIndex(history["month_id"], freq="M")
+    values = pd.to_numeric(history["overnight_stays_total"], errors="coerce")
+    finite = values.map(
+        lambda value: isfinite(float(value)) if pd.notna(value) else False
+    )
+    in_training_window = pd.Series(
+        (months >= start) & (months <= end),
+        index=history.index,
+    )
+    observed_training = (
+        history["complete_month_available"]
+        & values.notna()
+        & finite
+        & values.ge(0)
+        & in_training_window
+    )
+    return bool((observed_training & history["is_provisional"]).any())
+
+
 def predict_next_month(
     territory_id: str,
     *,
@@ -560,6 +594,19 @@ def predict_next_month(
         actual_model = SELECTED_MODEL_ID
         fallback_used = False
         fallback_reason = "not_used"
+        if _ets_training_uses_provisional_data(
+            cutoff_history,
+            ets_forecast,
+        ):
+            warnings.append(
+                InferenceWarning(
+                    code="provisional_training_data",
+                    message=(
+                        "La estimacion ETS utiliza datos provisionales del "
+                        "INE que pueden revisarse."
+                    ),
+                )
+            )
     else:
         reason = str(ets_forecast.unavailable_reason)
         if reason not in AVAILABILITY_FALLBACK_REASONS:

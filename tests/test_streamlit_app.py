@@ -71,6 +71,10 @@ class TestStreamlitPresentationFunctions(unittest.TestCase):
         self.assertIn("provisional", message)
         self.assertIn("INE", message)
 
+        training_message = translate_warning("provisional_training_data")
+        self.assertIn("estimación ETS", training_message)
+        self.assertIn("datos provisionales del INE", training_message)
+
     def test_outside_range_warning_names_the_comparable_month(self) -> None:
         message = translate_warning(
             "forecast_outside_historical_range",
@@ -245,7 +249,10 @@ class TestStreamlitRealProduct(unittest.TestCase):
             "evaluation_logical_prediction_sha256",
         }
         self.assertTrue(required.issubset(exported.columns))
-        self.assertTrue(pd.isna(exported.iloc[0]["warning_codes"]))
+        self.assertIn(
+            "provisional_training_data",
+            exported.iloc[0]["warning_codes"],
+        )
 
     def test_real_chart_and_text_keep_forecast_separate(self) -> None:
         figure = make_history_figure(self.araba.chart)
@@ -394,8 +401,12 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertNotIn("Alta", visible_text)
         self.assertIn("septiembres históricos comparables", visible_text)
         self.assertIn("Los meses sin datos", visible_text)
+        self.assertIn(
+            "La estimación ETS utiliza datos provisionales del INE",
+            visible_text,
+        )
 
-        self.assertEqual(len(app.warning), 1)
+        self.assertEqual(len(app.warning), 2)
         self.assertGreaterEqual(len(app.info), 2)
         self.assertEqual(len(app.get("plotly_chart")), 1)
         self.assertEqual(
