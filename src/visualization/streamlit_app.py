@@ -771,11 +771,13 @@ def _apply_dashboard_style() -> None:
         <style>
         .block-container {
             max-width: 1520px;
-            padding-top: 0.75rem;
+            padding-top: 3.25rem;
             padding-bottom: 1.5rem;
         }
         .block-container h1 {
             font-size: 2.15rem;
+            line-height: 1.2;
+            padding-top: 0.1rem;
             margin-bottom: 0.1rem;
         }
         .block-container h3,
