@@ -86,12 +86,12 @@ oficiales pueden revisarse.
 ### 2.1. Pantalla principal
 
 La imagen es una captura del frontal real, no una composición gráfica ajena a
-la implementación. Representa una consulta de **Araba/Álava** realizada el 21
+la implementación. Representa una consulta de **Albacete** realizada el 24
 de agosto de 2026. La aplicación informa de que los datos están disponibles
 hasta junio de 2026 y muestra septiembre de 2026 como mes objetivo. El resultado
-visible es un pronóstico puntual de 7.795 pernoctaciones, una posición histórica
-«Por encima de lo habitual» y un intervalo empírico del 80 % entre 3.279 y
-12.311.
+visible es un pronóstico puntual de 25.833 pernoctaciones, una posición histórica
+«Por encima de lo habitual» y un intervalo empírico del 80 % entre 10.675 y
+40.911.
 
 El encuadre prioriza la tarea principal: propósito, selector, corte de datos,
 mes objetivo, cinco tarjetas de resumen y un cuerpo en dos columnas. El gráfico
