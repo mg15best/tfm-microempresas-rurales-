@@ -154,6 +154,7 @@ class TestStreamlitPresentationFunctions(unittest.TestCase):
         self.assertIn("Previsión para", figure.data[1].hovertemplate)
         self.assertIn("ene 2026", list(figure.layout.xaxis.ticktext))
         self.assertEqual(figure.layout.yaxis.tickformat, ",.0f")
+        self.assertEqual(figure.layout.height, 290)
 
 
 class TestStreamlitRealProduct(unittest.TestCase):
@@ -386,10 +387,7 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
             dashboard_headings.index("### Resumen ejecutivo"),
             dashboard_headings.index("#### Evolución provincial y previsión"),
         )
-        self.assertLess(
-            dashboard_headings.index("#### Evolución provincial y previsión"),
-            dashboard_headings.index("### Detalle y trazabilidad"),
-        )
+        self.assertIn("#### Evolución provincial y previsión", dashboard_headings)
 
         visible_text = " ".join(
             str(item.value)
@@ -407,8 +405,8 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertIn("seleccionado provisionalmente", visible_text)
         self.assertIn("distinta del intervalo predictivo", visible_text)
         self.assertIn("Lectura rápida", visible_text)
-        self.assertIn("Avisos de lectura", visible_text)
-        self.assertIn("señal es provincial", visible_text)
+        self.assertIn("Avisos", visible_text)
+        self.assertIn("Señal provincial", visible_text)
         self.assertNotIn("precisión", visible_text.casefold())
         self.assertNotIn("confidence", visible_text.casefold())
         self.assertNotIn("Mes de referencia (t-12)", visible_text)
@@ -424,12 +422,16 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertGreaterEqual(len(app.info), 2)
         self.assertEqual(len(app.get("plotly_chart")), 1)
         self.assertEqual(
-            [item.label for item in app.expander],
+            [item.label for item in app.tabs],
             [
-                "Resultados en validación temporal canónica",
-                "Detalle del histórico comparable",
+                "Histórico comparable",
                 "Metodología y trazabilidad",
+                "Exportación",
             ],
+        )
+        self.assertEqual(
+            [item.label for item in app.expander],
+            ["Detalle y trazabilidad"],
         )
         self.assertEqual(len(app.download_button), 1)
 

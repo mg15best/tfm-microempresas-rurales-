@@ -643,15 +643,15 @@ def make_history_figure(chart: HistoryChartData) -> go.Figure:
         )
     )
     figure.update_layout(
-        height=350,
+        height=290,
         hovermode="closest",
-        legend={"orientation": "h", "y": 1.12, "x": 0},
-        margin={"l": 20, "r": 20, "t": 55, "b": 20},
+        legend={"orientation": "h", "y": 1.08, "x": 0},
+        margin={"l": 10, "r": 10, "t": 42, "b": 8},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         separators=",.",
         xaxis={
-            "title": "Mes",
+            "title": None,
             "showgrid": False,
             "tickmode": "array",
             "tickvals": tick_values,
@@ -659,7 +659,7 @@ def make_history_figure(chart: HistoryChartData) -> go.Figure:
             "automargin": True,
         },
         yaxis={
-            "title": "Pernoctaciones provinciales",
+            "title": "Pernoctaciones",
             "rangemode": "tozero",
             "tickformat": ",.0f",
             "automargin": True,
@@ -771,14 +771,31 @@ def _apply_dashboard_style() -> None:
         <style>
         .block-container {
             max-width: 1520px;
-            padding-top: 1.35rem;
-            padding-bottom: 2.5rem;
+            padding-top: 0.75rem;
+            padding-bottom: 1.5rem;
+        }
+        .block-container h1 {
+            font-size: 2.15rem;
+            margin-bottom: 0.1rem;
+        }
+        .block-container h3,
+        .block-container h4 {
+            margin-bottom: 0.1rem;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0.55rem;
         }
         div[data-testid="stMetric"] {
-            min-height: 5rem;
+            min-height: 3.9rem;
         }
         div[data-testid="stMetricValue"] {
-            font-size: 1.55rem;
+            font-size: 1.35rem;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: 0.8rem;
+        }
+        div[data-testid="stCaptionContainer"] p {
+            line-height: 1.25;
         }
         </style>
         """,
@@ -829,15 +846,20 @@ def _render_analytical_warnings(view: ForecastViewModel) -> None:
         )
 
     with st.container(border=True):
-        st.markdown("#### Avisos de lectura")
+        st.markdown("#### Avisos")
         if messages:
             unique_messages = tuple(dict.fromkeys(messages))
+            warning_copy = (
+                unique_messages[0]
+                if len(unique_messages) == 1
+                else "\n".join(f"- {message}" for message in unique_messages)
+            )
             st.warning(
-                "\n".join(f"- {message}" for message in unique_messages),
+                warning_copy,
                 icon="⚠️",
             )
         else:
-            st.success("Sin avisos adicionales para esta consulta.")
+            st.success("Sin avisos adicionales.")
 
 
 def _render_primary_result(view: ForecastViewModel) -> None:
@@ -865,11 +887,6 @@ def _render_primary_result(view: ForecastViewModel) -> None:
         else "Intervalo no disponible; el punto sigue válido."
     )
     model_value = "lag-12" if view.fallback_used else "ETS"
-    model_caption = (
-        "Respaldo utilizado solo por disponibilidad."
-        if view.fallback_used
-        else "Campeón provisional de validación."
-    )
     (
         forecast_column,
         interval_column,
@@ -881,62 +898,64 @@ def _render_primary_result(view: ForecastViewModel) -> None:
         forecast_column,
         label="Pronóstico puntual",
         value=format_spanish_number(view.forecast_value),
-        caption="Pernoctaciones provinciales.",
+        caption="Pernoctaciones.",
     )
     _render_kpi_card(
         interval_column,
         label="Intervalo empírico 80 %",
         value=interval_value,
-        caption=interval_caption,
+        caption=(
+            "Rango empírico; no es una garantía."
+            if view.interval_available
+            else interval_caption
+        ),
     )
     _render_kpi_card(
         position_column,
         label="Posición histórica",
         value=compact_activity,
-        caption=(
-            "Frente a lo habitual · mismo mes · "
-            f"{view.historical_sample_size} años."
-        ),
+        caption=f"Mismo mes · {view.historical_sample_size} años.",
     )
     _render_kpi_card(
         model_column,
         label="Modelo realmente usado",
         value=model_value,
-        caption=model_caption,
+        caption=(
+            "Respaldo por disponibilidad."
+            if view.fallback_used
+            else "Campeón provisional."
+        ),
         help_text=view.actual_model_used,
     )
     _render_kpi_card(
         target_column,
         label="Mes objetivo",
         value=compact_target,
-        caption=(
-            "Datos disponibles hasta "
-            f"{format_spanish_month(view.latest_available_month_id)}."
-        ),
+        caption="Corte: " + format_spanish_month(view.latest_available_month_id),
     )
 
 
 def _render_guidance(view: ForecastViewModel) -> None:
-    st.markdown("#### Orientación para la planificación")
-    if view.action_guidance:
-        st.info(view.action_guidance, icon="ℹ️")
-    else:
-        st.info(
-            "No hay suficiente contexto histórico para ofrecer orientación.",
-            icon="ℹ️",
+    with st.container(border=True):
+        st.markdown("#### Orientación")
+        if view.action_guidance:
+            st.info(view.action_guidance, icon="ℹ️")
+        else:
+            st.info(
+                "No hay suficiente contexto histórico para ofrecer "
+                "orientación.",
+                icon="ℹ️",
+            )
+        st.caption(
+            "Contrasta esta señal con reservas, capacidad y contexto local."
         )
-    st.caption(
-        "Señal de apoyo: contrástala con reservas, capacidad, personal, "
-        "eventos y contexto propio antes de decidir."
-    )
 
 
 def _render_history(view: ForecastViewModel) -> None:
     st.markdown("#### Evolución provincial y previsión")
     st.caption(
-        "Histórico point-in-time hasta "
-        f"{format_spanish_month(view.latest_available_month_id)}. "
-        "Los huecos permanecen visibles y la previsión se muestra separada."
+        "24 meses · huecos no interpolados · previsión separada · corte "
+        f"{format_spanish_month(view.latest_available_month_id)}."
     )
     figure = make_history_figure(view.chart)
     st.plotly_chart(
@@ -951,17 +970,24 @@ def _render_history(view: ForecastViewModel) -> None:
 
 
 def _render_interpretation(view: ForecastViewModel) -> None:
-    with st.expander("Detalle del histórico comparable"):
+    summary_column, metrics_column = st.columns(
+        [1.7, 1],
+        gap="medium",
+        vertical_alignment="top",
+    )
+    with summary_column:
+        st.markdown("#### Lectura del histórico comparable")
         st.caption(
             "La posición histórica es distinta del intervalo predictivo."
         )
-        st.write(build_history_summary(view))
         st.write(
             format_percentile_position(view.historical_percentile_pct) + "."
         )
+        st.caption(build_history_summary(view))
+    with metrics_column:
         median_column, sample_column = st.columns(2)
         median_column.metric(
-            "Mediana de los meses comparables",
+            "Mediana comparable",
             (
                 format_spanish_number(view.historical_median)
                 if view.historical_median is not None
@@ -978,22 +1004,15 @@ def _render_quick_read(view: ForecastViewModel) -> None:
     with st.container(border=True):
         st.markdown("#### Lectura rápida")
         st.write(
-            f"**Qué:** pernoctaciones provinciales de turismo rural.  \n"
-            f"**Dónde:** {view.territory_name}.  \n"
-            f"**Cuándo:** {format_spanish_month(view.target_month_id)}."
-        )
-        st.write(
-            f"**Resultado:** {format_spanish_number(view.forecast_value)}; "
-            f"{format_activity_level(view.activity_level).casefold()}."
+            f"**{format_spanish_number(view.forecast_value)} pernoctaciones** "
+            f"· {format_activity_level(view.activity_level).casefold()}."
         )
         st.caption(
-            format_percentile_position(view.historical_percentile_pct) + "."
+            f"{view.territory_name} · "
+            f"{format_spanish_month(view.target_month_id)} · "
+            + format_percentile_position(view.historical_percentile_pct)
         )
-        st.divider()
-        st.caption(
-            "La señal es provincial: no estima reservas, ingresos ni demanda "
-            "de un establecimiento concreto."
-        )
+        st.caption("Señal provincial; no estima reservas ni ingresos del negocio.")
 
 
 def _render_validation_summary(view: ForecastViewModel) -> None:
@@ -1010,89 +1029,98 @@ def _render_validation_summary(view: ForecastViewModel) -> None:
         )
         st.markdown("**ETS: campeón provisional de validación**")
         st.caption(
-            "ETS fue seleccionado con validación temporal point-in-time; "
-            "todavía sin un nuevo test final independiente."
+            "Validación temporal point-in-time; sin nuevo test final "
+            "independiente."
         )
 
 
 def _render_dashboard_body(view: ForecastViewModel) -> None:
     chart_column, context_column = st.columns(
-        [1.75, 1],
-        gap="large",
+        [1.65, 1],
+        gap="medium",
         vertical_alignment="top",
     )
     with chart_column:
         with st.container(border=True):
             _render_history(view)
-            _render_guidance(view)
     with context_column:
         _render_quick_read(view)
         _render_analytical_warnings(view)
         _render_validation_summary(view)
+        _render_guidance(view)
 
 
 def _render_secondary_detail(view: ForecastViewModel) -> None:
-    st.markdown("### Detalle y trazabilidad")
-    validation_column, methodology_column, export_column = st.columns(
-        [1, 1.25, 0.75],
-        gap="medium",
-        vertical_alignment="top",
-    )
-    with validation_column:
-        _render_secondary_metrics(view)
-        _render_interpretation(view)
-    with methodology_column:
-        _render_methodology(view)
-    with export_column:
-        with st.container(border=True):
-            st.markdown("#### Exportación")
-            st.caption(
-                "Descarga el resultado, su intervalo, warnings y linaje para "
-                "conservar o compartir la consulta."
+    with st.expander("Detalle y trazabilidad"):
+        history_tab, methodology_tab, export_tab = st.tabs(
+            [
+                "Histórico comparable",
+                "Metodología y trazabilidad",
+                "Exportación",
+            ]
+        )
+        with history_tab:
+            _render_interpretation(view)
+        with methodology_tab:
+            validation_column, lineage_column = st.columns(
+                [1, 1.35],
+                gap="medium",
+                vertical_alignment="top",
             )
-            _render_download(view)
+            with validation_column:
+                _render_secondary_metrics(view)
+            with lineage_column:
+                _render_methodology(view)
+        with export_tab:
+            with st.container(border=True):
+                st.markdown("#### Exportación")
+                st.caption(
+                    "Descarga el resultado, su intervalo, warnings y linaje "
+                    "para conservar o compartir la consulta."
+                )
+                _render_download(view)
 
 
 def _render_secondary_metrics(view: ForecastViewModel) -> None:
-    with st.expander("Resultados en validación temporal canónica"):
-        st.markdown(
-            "**Error WAPE en validación: "
-            f"{format_spanish_percent(view.validation_wape_pct)}**"
-        )
-        st.write(
-            "Métricas provinciales del sistema operacional seleccionado, "
-            "calculadas sobre `operational_prediction`."
-        )
-        mae_column, rmse_column = st.columns(2)
-        mae_column.metric(
-            "Error absoluto medio (MAE)",
-            format_spanish_number(view.validation_mae, 1),
-        )
-        rmse_column.metric(
-            "Raíz del error cuadrático medio (RMSE)",
-            format_spanish_number(view.validation_rmse, 1),
-        )
-        bias_column, rows_column = st.columns(2)
-        bias_column.metric(
-            "Sesgo medio",
-            format_spanish_number(view.validation_bias, 1),
-            help=(
-                "Un valor negativo indica tendencia histórica a "
-                "infrapredecir; uno positivo, a sobrepredecir."
-            ),
-        )
-        bias_column.write(
-            "Negativo: tendencia histórica a infrapredecir. Positivo: "
-            "tendencia histórica a sobrepredecir."
-        )
-        rows_column.metric(
-            "Observaciones de validación",
-            str(view.validation_rows),
-        )
+    st.markdown("#### Validación temporal canónica")
+    st.markdown(
+        "**Error WAPE en validación: "
+        f"{format_spanish_percent(view.validation_wape_pct)}**"
+    )
+    st.caption(
+        "Métricas provinciales del sistema operacional sobre "
+        "`operational_prediction`."
+    )
+    mae_column, rmse_column = st.columns(2)
+    mae_column.metric(
+        "Error absoluto medio (MAE)",
+        format_spanish_number(view.validation_mae, 1),
+    )
+    rmse_column.metric(
+        "Raíz del error cuadrático medio (RMSE)",
+        format_spanish_number(view.validation_rmse, 1),
+    )
+    bias_column, rows_column = st.columns(2)
+    bias_column.metric(
+        "Sesgo medio",
+        format_spanish_number(view.validation_bias, 1),
+        help=(
+            "Un valor negativo indica tendencia histórica a "
+            "infrapredecir; uno positivo, a sobrepredecir."
+        ),
+    )
+    bias_column.caption(
+        "Negativo: infrapredicción media; positivo: sobrepredicción media."
+    )
+    rows_column.metric(
+        "Observaciones de validación",
+        str(view.validation_rows),
+    )
 
 
 def _render_methodology(view: ForecastViewModel) -> None:
-    with st.expander("Metodología y trazabilidad"):
+    st.markdown("#### Método y linaje")
+    with st.container(border=True):
         st.info(
             "El modelo ha sido seleccionado provisionalmente mediante "
             "validación temporal point-in-time y todavía no dispone de "

@@ -56,9 +56,10 @@ ejecutiva de lectura progresiva:
 
 1. cabecera y contexto temporal de la consulta;
 2. resumen horizontal con pronóstico, intervalo, posición, modelo y objetivo;
-3. gráfico principal y orientación de planificación;
-4. lectura rápida, avisos y validación resumida;
-5. evidencia secundaria, trazabilidad y exportación desplegables.
+3. gráfico principal compacto y panel ejecutivo lateral con lectura rápida,
+   avisos, validación y orientación;
+4. detalle secundario plegado, con pestañas de histórico comparable,
+   metodología y exportación.
 
 ### 1.5. Resultado y acción principal
 
@@ -94,10 +95,10 @@ visible es un pronóstico puntual de 7.795 pernoctaciones, una posición histór
 
 El encuadre prioriza la tarea principal: propósito, selector, corte de datos,
 mes objetivo, cinco tarjetas de resumen y un cuerpo en dos columnas. El gráfico
-Plotly y la orientación ocupan el panel principal; la lectura rápida, los avisos
-y la validación resumida forman el panel lateral. Las métricas ampliadas, el
-histórico comparable, la metodología, la procedencia y la descarga permanecen
-desplegables bajo ese nivel ejecutivo para no competir con la decisión.
+Plotly compacto ocupa el panel principal; la lectura rápida, los avisos, la
+validación resumida y la orientación forman el panel lateral. Las métricas
+ampliadas, el histórico comparable, la metodología, la procedencia y la descarga
+quedan bajo ese nivel ejecutivo en un detalle plegado con tres pestañas.
 
 ### 2.2. Elementos representados
 
@@ -172,8 +173,8 @@ puede cambiar de territorio y reintentar sin perder el contexto general.
 ### 3.3. Experiencia de usuario
 
 * **Jerarquía:** una cabecera compacta y cinco KPIs preceden a un cuerpo en dos
-  columnas; el gráfico y la orientación dominan la lectura y el detalle
-  analítico queda plegado debajo.
+  columnas; el gráfico domina la lectura y el panel derecho concentra cuatro
+  tarjetas ejecutivas antes del detalle plegado en pestañas.
 * **Simplicidad:** el único input necesario es la provincia; las fechas se
   derivan del corte point-in-time disponible.
 * **Legibilidad:** unidades, meses y etiquetas semánticas acompañan a las cifras
