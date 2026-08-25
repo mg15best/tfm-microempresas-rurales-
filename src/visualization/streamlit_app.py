@@ -241,6 +241,31 @@ class ForecastViewModel:
     evaluation_github_run_id: str
     chart: HistoryChartData
 
+    @property
+    def planning_month_id(self) -> str:
+        """Mes desde el que se planifica, derivado del horizonte del contrato."""
+
+        target = pd.Period(self.target_month_id, freq="M")
+        return str(target - self.forecast_horizon_months)
+
+    @property
+    def effective_observation_to_target_months(self) -> int:
+        """Meses naturales entre la última observación y el target."""
+
+        latest = pd.Period(self.latest_available_month_id, freq="M")
+        target = pd.Period(self.target_month_id, freq="M")
+        return int(target.ordinal - latest.ordinal)
+
+    @property
+    def interval_width(self) -> float | None:
+        """Amplitud de presentación sin modificar el intervalo estadístico."""
+
+        if not self.interval_available:
+            return None
+        if self.interval_lower is None or self.interval_upper is None:
+            return None
+        return float(self.interval_upper - self.interval_lower)
+
 
 def _alphabetical_key(value: str) -> str:
     """Ordena labels de forma estable sin depender del locale del sistema."""
@@ -697,7 +722,11 @@ def build_download_csv(view: ForecastViewModel) -> bytes:
         "territory_id": view.territory_id,
         "territory_name": view.territory_name,
         "as_of_date": view.as_of_date.isoformat(),
+        "planning_month_id": view.planning_month_id,
         "target_month_id": view.target_month_id,
+        "effective_observation_to_target_months": (
+            view.effective_observation_to_target_months
+        ),
         "predicted_overnight_stays_total": view.forecast_value,
         "selected_model_id": view.selected_model_id,
         "selection_status": view.selection_status,
@@ -714,6 +743,7 @@ def build_download_csv(view: ForecastViewModel) -> bytes:
         "interval_available": view.interval_available,
         "interval_lower": view.interval_lower,
         "interval_upper": view.interval_upper,
+        "interval_width": view.interval_width,
         "interval_nominal_level": view.interval_nominal_level,
         "interval_method_id": view.interval_method_id,
         "interval_calibration_scores_n": (
@@ -806,12 +836,22 @@ def _apply_dashboard_style() -> None:
 
 
 def _render_temporal_context(view: ForecastViewModel) -> None:
+    horizon_copy = (
+        "mes siguiente"
+        if view.forecast_horizon_months == 1
+        else f"{view.forecast_horizon_months} meses"
+    )
     st.caption(
         f"Consulta: {format_spanish_date(view.as_of_date)}  ·  "
-        "Datos oficiales hasta: "
-        f"{format_spanish_month(view.latest_available_month_id)}  ·  "
-        f"Mes objetivo: {format_spanish_month(view.target_month_id)}  ·  "
-        "Horizonte: un mes  ·  Alcance: señal provincial"
+        f"Planificación: {format_spanish_month(view.planning_month_id)} → "
+        f"previsión: {format_spanish_month(view.target_month_id)} "
+        f"({horizon_copy})"
+    )
+    st.caption(
+        "Último dato oficial disponible: "
+        f"{format_spanish_month(view.latest_available_month_id)}. "
+        "El desfase responde al calendario de publicación del INE.  ·  "
+        "Alcance: señal provincial"
     )
 
 
@@ -884,7 +924,8 @@ def _render_primary_result(view: ForecastViewModel) -> None:
         else "No disponible"
     )
     interval_caption = (
-        "Rango empírico; no es una garantía."
+        "Amplitud: "
+        f"{format_spanish_number(view.interval_width)} pernoctaciones."
         if view.interval_available
         else "Intervalo no disponible; el punto sigue válido."
     )
@@ -906,11 +947,7 @@ def _render_primary_result(view: ForecastViewModel) -> None:
         interval_column,
         label="Intervalo empírico 80 %",
         value=interval_value,
-        caption=(
-            "Rango empírico; no es una garantía."
-            if view.interval_available
-            else interval_caption
-        ),
+        caption=interval_caption,
     )
     _render_kpi_card(
         position_column,
@@ -1006,12 +1043,26 @@ def _render_quick_read(view: ForecastViewModel) -> None:
     with st.container(border=True):
         st.markdown("#### Lectura rápida")
         st.write(
-            f"**{format_spanish_number(view.forecast_value)} pernoctaciones** "
-            f"· {format_activity_level(view.activity_level).casefold()}."
+            "Estimación central: "
+            f"**{format_spanish_number(view.forecast_value)} pernoctaciones.**"
         )
+        if view.interval_available:
+            st.write(
+                "Rango empírico: "
+                f"**{format_spanish_number(view.interval_lower)}–"
+                f"{format_spanish_number(view.interval_upper)}** · "
+                "amplitud: "
+                f"**{format_spanish_number(view.interval_width)} "
+                "pernoctaciones**."
+            )
+            st.caption(
+                "La amplitud muestra cuánto puede variar la señal: "
+                "interprétala para planificar, no como un volumen exacto."
+            )
         st.caption(
             f"{view.territory_name} · "
             f"{format_spanish_month(view.target_month_id)} · "
+            f"{format_activity_level(view.activity_level).casefold()} · "
             + format_percentile_position(view.historical_percentile_pct)
         )
         st.caption("Señal provincial; no estima reservas ni ingresos del negocio.")
@@ -1019,20 +1070,21 @@ def _render_quick_read(view: ForecastViewModel) -> None:
 
 def _render_validation_summary(view: ForecastViewModel) -> None:
     with st.container(border=True):
-        st.markdown("#### Validación resumida")
+        st.markdown(f"#### Rendimiento en validación · {view.territory_name}")
         wape_column, mae_column = st.columns(2)
         wape_column.metric(
-            "Error WAPE en validación",
+            "WAPE provincial",
             format_spanish_percent(view.validation_wape_pct),
         )
         mae_column.metric(
-            "Error absoluto medio",
+            "MAE provincial",
             format_spanish_number(view.validation_mae, 1),
         )
         st.markdown("**ETS: campeón provisional de validación**")
         st.caption(
-            "Validación temporal point-in-time; sin nuevo test final "
-            "independiente."
+            "Calculado exclusivamente sobre la validación temporal de "
+            f"{view.territory_name}, no sobre el conjunto agregado de "
+            "provincias."
         )
 
 
@@ -1084,27 +1136,29 @@ def _render_secondary_detail(view: ForecastViewModel) -> None:
 
 
 def _render_secondary_metrics(view: ForecastViewModel) -> None:
-    st.markdown("#### Validación temporal canónica")
     st.markdown(
-        "**Error WAPE en validación: "
-        f"{format_spanish_percent(view.validation_wape_pct)}**"
+        f"#### Rendimiento en validación temporal · {view.territory_name}"
     )
     st.caption(
-        "Métricas provinciales del sistema operacional sobre "
-        "`operational_prediction`."
+        "Calculado exclusivamente sobre la validación temporal de "
+        f"{view.territory_name}, no sobre el conjunto agregado de provincias."
     )
-    mae_column, rmse_column = st.columns(2)
+    wape_column, mae_column = st.columns(2)
+    wape_column.metric(
+        "WAPE provincial",
+        format_spanish_percent(view.validation_wape_pct),
+    )
     mae_column.metric(
-        "Error absoluto medio (MAE)",
+        "MAE provincial",
         format_spanish_number(view.validation_mae, 1),
     )
+    rmse_column, bias_column = st.columns(2)
     rmse_column.metric(
-        "Raíz del error cuadrático medio (RMSE)",
+        "RMSE provincial",
         format_spanish_number(view.validation_rmse, 1),
     )
-    bias_column, rows_column = st.columns(2)
     bias_column.metric(
-        "Sesgo medio",
+        "Sesgo provincial",
         format_spanish_number(view.validation_bias, 1),
         help=(
             "Un valor negativo indica tendencia histórica a "
@@ -1114,9 +1168,13 @@ def _render_secondary_metrics(view: ForecastViewModel) -> None:
     bias_column.caption(
         "Negativo: infrapredicción media; positivo: sobrepredicción media."
     )
-    rows_column.metric(
+    st.metric(
         "Observaciones de validación",
         str(view.validation_rows),
+    )
+    st.caption(
+        "Evidencia temporal canónica sobre `operational_prediction`; "
+        "no implica rendimiento futuro garantizado."
     )
 
 
@@ -1138,7 +1196,22 @@ def _render_methodology(view: ForecastViewModel) -> None:
                     f"`{view.actual_model_used}`",
                     f"- **Fallback por disponibilidad:** `{view.fallback_used}`",
                     f"- **Motivo de fallback:** `{view.fallback_reason}`",
-                    f"- **Horizonte:** {view.forecast_horizon_months} mes",
+                    "- **Horizonte de planificación:** "
+                    f"{view.forecast_horizon_months} "
+                    f"{'mes' if view.forecast_horizon_months == 1 else 'meses'}",
+                    "- **Mes de planificación:** "
+                    + format_spanish_month(view.planning_month_id),
+                    "- **Última observación disponible:** "
+                    + format_spanish_month(view.latest_available_month_id),
+                    "- **Mes objetivo (target):** "
+                    + format_spanish_month(view.target_month_id),
+                    "- **Distancia efectiva desde el último dato:** "
+                    f"{view.effective_observation_to_target_months} "
+                    + (
+                        "mes"
+                        if view.effective_observation_to_target_months == 1
+                        else "meses"
+                    ),
                     "- **Referencia estacional de escala/respaldo:** "
                     + format_spanish_month(view.baseline_reference_month_id),
                     f"- **Estado operacional:** `{view.operational_status}`",
@@ -1175,6 +1248,11 @@ def _render_methodology(view: ForecastViewModel) -> None:
                     ),
                 )
             )
+        )
+        st.caption(
+            "El 80 % es un nivel nominal empírico: no es un intervalo de "
+            "confianza ni implica una probabilidad del 80 % para esta "
+            "predicción."
         )
         st.markdown(
             f"""

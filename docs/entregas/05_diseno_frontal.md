@@ -27,6 +27,12 @@ pernoctaciones cabe esperar el mes siguiente, cuánto puede variar esa cifra y
 si el resultado está por encima o por debajo de lo habitual para esa provincia
 y ese mes del año.
 
+El mes siguiente se refiere al horizonte de planificación desde el mes de
+consulta, no al tiempo transcurrido desde la última observación. La publicación
+del INE puede llevar retraso: en la consulta representada se planifica desde
+agosto para septiembre de 2026, mientras el último dato oficial disponible es
+junio de 2026.
+
 El producto reduce esa fricción: reúne histórico, pronóstico, incertidumbre y
 una orientación operativa en una misma consulta. Su ámbito es agregado y
 provincial. No pronostica reservas, ingresos, beneficio ni demanda de un
@@ -74,8 +80,11 @@ decidir. Ninguna señal debe interpretarse de forma aislada.
 La variable pronosticada son las pernoctaciones mensuales provinciales en
 alojamientos de turismo rural. Una provincia no equivale a un establecimiento:
 el producto no predice sus reservas, ingresos, facturación ni rentabilidad. El
-horizonte implementado es de un mes y no incorpora todavía información interna
-del negocio, precios, clima o eventos. Cuando el ajuste ETS consume
+horizonte de planificación implementado es de un mes. Se distingue del desfase
+de publicación y de la distancia efectiva entre la última observación y el target,
+que en la consulta representada es de tres meses (junio-septiembre). El MVP no
+incorpora todavía información interna del negocio, precios, clima o eventos.
+Cuando el ajuste ETS consume
 observaciones provisionales del INE, la interfaz lo comunica porque esos datos
 oficiales pueden revisarse.
 
@@ -86,12 +95,13 @@ oficiales pueden revisarse.
 ### 2.1. Pantalla principal
 
 La imagen es una captura del frontal real, no una composición gráfica ajena a
-la implementación. Representa una consulta de **Albacete** realizada el 24
+la implementación. Representa una consulta de **Albacete** realizada el 25
 de agosto de 2026. La aplicación informa de que los datos están disponibles
-hasta junio de 2026 y muestra septiembre de 2026 como mes objetivo. El resultado
-visible es un pronóstico puntual de 25.833 pernoctaciones, una posición histórica
-«Por encima de lo habitual» y un intervalo empírico del 80 % entre 10.675 y
-40.911.
+hasta junio de 2026 y muestra la planificación agosto-septiembre como horizonte
+de un mes. El resultado visible es un pronóstico puntual de 25.833
+pernoctaciones, una posición histórica «Por encima de lo habitual» y un intervalo
+empírico del 80 % entre 10.675 y 40.991, con amplitud de 30.316
+pernoctaciones.
 
 El encuadre prioriza la tarea principal: propósito, selector, corte de datos,
 mes objetivo, cinco tarjetas de resumen y un cuerpo en dos columnas. El gráfico
@@ -103,13 +113,14 @@ quedan bajo ese nivel ejecutivo en un detalle plegado con tres pestañas.
 ### 2.2. Elementos representados
 
 * **Selector territorial:** limita la consulta a las 50 provincias soportadas.
-* **Corte de disponibilidad:** hace visible hasta qué mes llega la información
-  realmente utilizable y separa esa fecha de la fecha de consulta.
+* **Contexto temporal:** separa el mes de planificación, el target y el último
+  dato oficial disponible, y explica que su desfase responde al calendario de
+  publicación del INE.
 * **Mes objetivo:** evita confundir el mes observado más reciente con el mes
   pronosticado.
 * **Pronóstico puntual:** ofrece la referencia central en pernoctaciones.
-* **Intervalo empírico operacional:** comunica un rango de variación útil para
-  planificar con prudencia.
+* **Intervalo empírico operacional:** comunica los extremos y la amplitud del
+  rango para dar a la incertidumbre el mismo contexto visible que al punto.
 * **Posición histórica:** compara el punto mediante Q25, Q75 y percentil con el
   comportamiento histórico de la provincia para el mismo mes del año.
 * **Orientación operativa:** traduce las señales disponibles a una pauta
@@ -117,7 +128,9 @@ quedan bajo ese nivel ejecutivo en un detalle plegado con tres pestañas.
 * **Historia y gráfico:** permiten revisar el patrón temporal que contextualiza
   la cifra principal.
 * **Evidencia y procedencia:** exponen métricas, método, fecha de corte y estado
-  de la selección cuando el usuario necesita profundizar.
+  de la selección cuando el usuario necesita profundizar. El resumen muestra
+  WAPE y MAE de la provincia seleccionada; el detalle añade RMSE, sesgo y número
+  de observaciones de esa misma validación territorial.
 * **Descarga:** permite obtener el contexto de la consulta en CSV.
 
 ### 2.3. Estados excepcionales y mensajes
@@ -178,7 +191,9 @@ puede cambiar de territorio y reintentar sin perder el contexto general.
 * **Simplicidad:** el único input necesario es la provincia; las fechas se
   derivan del corte point-in-time disponible.
 * **Legibilidad:** unidades, meses y etiquetas semánticas acompañan a las cifras
-  para evitar lecturas ambiguas.
+  para evitar lecturas ambiguas. La cabecera distingue el horizonte de
+  planificación del desfase de publicación, y la lectura rápida presenta punto,
+  rango y amplitud juntos.
 * **Consistencia:** el mismo territorio y corte gobiernan todos los bloques de
   la vista.
 * **Feedback:** los avisos distinguen ausencia de intervalo, fallback y error
@@ -199,7 +214,8 @@ puede cambiar de territorio y reintentar sin perder el contexto general.
 2. **Intervalo empírico operacional del 80 %:** rango calibrado con errores
    prequentiales fuera de muestra disponibles antes de cada predicción. Expresa
    incertidumbre operacional; no garantiza que toda provincia o temporada
-   alcance individualmente esa cobertura. Su método implementado es
+   alcance individualmente esa cobertura. No es un intervalo de confianza ni
+   implica una probabilidad del 80 % para la predicción individual. Su método es
    `operational_prequential_scaled_absolute_residual_interval_v1` y se calibra
    con residuos de la validación rolling disponibles prequentialmente.
 3. **Posición histórica:** clasificación del punto frente a los cuantiles 25 y
@@ -213,9 +229,11 @@ puede cambiar de territorio y reintentar sin perder el contexto general.
 
 El nivel visible utiliza lenguaje de negocio: territorio, disponibilidad, mes
 objetivo, pernoctaciones, rango, comparación histórica y pauta de planificación.
-El detalle secundario aporta métricas provinciales, procedencia, modelo usado,
-estado de selección y notas metodológicas. La separación permite una lectura
-rápida sin sacrificar trazabilidad para quien quiera auditarla.
+El panel ejecutivo aporta WAPE y MAE de la provincia seleccionada. El detalle
+secundario completa ese rendimiento territorial con RMSE, sesgo, número de
+observaciones, procedencia, modelo usado, estado de selección y notas
+metodológicas. La interfaz indica expresamente que estas métricas proceden solo
+de la validación temporal de la provincia consultada, no del conjunto agregado.
 
 ### 4.3. Evidencia del modelo y limitaciones
 
@@ -228,12 +246,15 @@ presentarlo como campeón provisional, no como modelo definitivamente
 confirmado.
 
 No existe una nueva ventana final intacta e independiente para confirmar la
-selección (`independent_final_test = false`). La evaluación usa el último
-vintage revisado disponible y métricas pooled que agregan territorios; por ello
-no deben interpretarse como una garantía probabilística independiente para
-cada provincia. El alcance sigue siendo mensual y provincial.
+selección (`independent_final_test = false`). La selección del modelo usa el
+último vintage revisado disponible y evidencia pooled que agrega territorios.
+La función `calculate_territory_validation_metrics()` calcula además la misma
+validación canónica por `territory_id` y `territory_name`; el frontal recupera y
+muestra exclusivamente la fila de la provincia seleccionada. Ninguna de estas
+métricas garantiza el rendimiento futuro. El alcance sigue siendo mensual y
+provincial.
 
-Evidencia canónica rolling agregada:
+Evidencia canónica rolling agregada, conservada solo como contexto global:
 
 | Métrica | Valor |
 |---|---:|

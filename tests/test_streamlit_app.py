@@ -168,6 +168,11 @@ class TestStreamlitRealProduct(unittest.TestCase):
             "ES-PROV-01",
             as_of_date="2026-08-20",
         )
+        cls.albacete = build_query(
+            cls.resources,
+            "ES-PROV-02",
+            as_of_date="2026-08-24",
+        )
         cls.badajoz = build_query(
             cls.resources,
             "ES-PROV-06",
@@ -224,6 +229,69 @@ class TestStreamlitRealProduct(unittest.TestCase):
         self.assertEqual(view.validation_rows, 35)
         self.assertEqual(view.evaluation_scope, "canonical_rolling_validation")
 
+    def test_human_temporal_context_is_derived_from_real_contract(self) -> None:
+        view = self.araba
+
+        self.assertEqual(view.planning_month_id, "2026-08")
+        self.assertEqual(view.target_month_id, "2026-09")
+        self.assertEqual(view.latest_available_month_id, "2026-06")
+        self.assertEqual(view.forecast_horizon_months, 1)
+        self.assertEqual(view.effective_observation_to_target_months, 3)
+
+    def test_real_albacete_interval_and_provincial_metrics_are_reproduced(
+        self,
+    ) -> None:
+        view = self.albacete
+        territory_metrics = next(
+            metrics
+            for metrics in (
+                self.resources.forecast_resources.canonical_validation
+                .territory_metrics
+            )
+            if metrics.territory_id == view.territory_id
+        )
+
+        self.assertEqual(view.territory_name, "Albacete")
+        self.assertEqual(round(view.forecast_value), 25_833)
+        self.assertEqual(round(view.interval_lower), 10_675)
+        self.assertEqual(round(view.interval_upper), 40_991)
+        self.assertEqual(round(view.interval_width), 30_316)
+        self.assertAlmostEqual(
+            view.interval_width,
+            view.interval_upper - view.interval_lower,
+        )
+        self.assertEqual(
+            view.validation_wape_pct,
+            territory_metrics.validation_wape_pct,
+        )
+        self.assertEqual(view.validation_mae, territory_metrics.validation_mae)
+        self.assertEqual(view.validation_rmse, territory_metrics.validation_rmse)
+        self.assertEqual(view.validation_bias, territory_metrics.validation_bias)
+        self.assertEqual(view.validation_rows, territory_metrics.validation_rows)
+
+    def test_araba_and_badajoz_metrics_also_match_selected_territory(
+        self,
+    ) -> None:
+        canonical_metrics = {
+            metrics.territory_id: metrics
+            for metrics in (
+                self.resources.forecast_resources.canonical_validation
+                .territory_metrics
+            )
+        }
+
+        for view in (self.araba, self.badajoz):
+            expected = canonical_metrics[view.territory_id]
+            with self.subTest(territory=view.territory_name):
+                self.assertEqual(
+                    view.validation_wape_pct,
+                    expected.validation_wape_pct,
+                )
+                self.assertEqual(view.validation_mae, expected.validation_mae)
+                self.assertEqual(view.validation_rmse, expected.validation_rmse)
+                self.assertEqual(view.validation_bias, expected.validation_bias)
+                self.assertEqual(view.validation_rows, expected.validation_rows)
+
     def test_download_is_utf8_csv_built_in_memory(self) -> None:
         payload = build_download_csv(self.araba)
         exported = pd.read_csv(BytesIO(payload))
@@ -243,8 +311,11 @@ class TestStreamlitRealProduct(unittest.TestCase):
             "interval_available",
             "interval_lower",
             "interval_upper",
+            "interval_width",
             "interval_nominal_level",
             "interval_method_id",
+            "planning_month_id",
+            "effective_observation_to_target_months",
             "evaluation_scope",
             "evaluation_generator_commit_sha",
             "evaluation_logical_prediction_sha256",
@@ -310,6 +381,7 @@ class TestStreamlitRealProduct(unittest.TestCase):
 
         self.assertGreaterEqual(view.forecast_value, 0)
         self.assertFalse(view.interval_available)
+        self.assertIsNone(view.interval_width)
         self.assertFalse(figure.data[1].error_y.visible)
 
     def test_precomputed_resources_avoid_revalidation_and_score_rebuild(self) -> None:
@@ -374,6 +446,11 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
                 "Posición histórica",
                 "Modelo realmente usado",
                 "Mes objetivo",
+                "WAPE provincial",
+                "MAE provincial",
+                "RMSE provincial",
+                "Sesgo provincial",
+                "Observaciones de validación",
             }.issubset(metric_labels)
         )
         self.assertNotIn("Error histórico WAPE", metric_labels)
@@ -401,7 +478,34 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
             for item in app.get(kind)
         )
         self.assertIn("por encima de lo habitual", visible_text.casefold())
-        self.assertIn("Error WAPE en validación", visible_text)
+        self.assertIn("Rendimiento en validación · Albacete", visible_text)
+        self.assertIn(
+            "Calculado exclusivamente sobre la validación temporal de "
+            "Albacete, no sobre el conjunto agregado de provincias.",
+            visible_text,
+        )
+        self.assertIn(
+            "Planificación: agosto de 2026 → previsión: septiembre de "
+            "2026 (mes siguiente)",
+            visible_text,
+        )
+        self.assertIn(
+            "Último dato oficial disponible: junio de 2026",
+            visible_text,
+        )
+        self.assertIn(
+            "El desfase responde al calendario de publicación del INE",
+            visible_text,
+        )
+        self.assertNotIn("Horizonte: un mes", visible_text)
+        self.assertIn("Horizonte de planificación:** 1 mes", visible_text)
+        self.assertIn(
+            "Distancia efectiva desde el último dato:** 3 meses",
+            visible_text,
+        )
+        self.assertIn("Estimación central", visible_text)
+        self.assertIn("10.675–40.991", visible_text)
+        self.assertIn("amplitud: **30.316 pernoctaciones**", visible_text)
         self.assertIn("seleccionado provisionalmente", visible_text)
         self.assertIn("distinta del intervalo predictivo", visible_text)
         self.assertIn("Lectura rápida", visible_text)
@@ -409,6 +513,12 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertIn("Señal provincial", visible_text)
         self.assertNotIn("precisión", visible_text.casefold())
         self.assertNotIn("confidence", visible_text.casefold())
+        self.assertIn(
+            "no es un intervalo de confianza ni implica una probabilidad "
+            "del 80 %",
+            visible_text,
+        )
+        self.assertNotIn("probabilidad de acierto", visible_text.casefold())
         self.assertNotIn("Mes de referencia (t-12)", visible_text)
         self.assertNotIn("Alta", visible_text)
         self.assertIn("septiembres históricos comparables", visible_text)
@@ -447,10 +557,42 @@ class TestStreamlitNativeSmoke(unittest.TestCase):
         self.assertIn("mismo mes del año anterior", visible_warnings)
         self.assertIn("dato de referencia utilizado es provisional", visible_warnings)
         self.assertNotIn("training_gap_unsupported", visible_warnings)
+        visible_text = " ".join(
+            str(item.value)
+            for kind in ("caption", "markdown", "metric")
+            for item in app.get(kind)
+        )
+        self.assertIn("Rendimiento en validación · Badajoz", visible_text)
+        self.assertIn(
+            "validación temporal de Badajoz, no sobre el conjunto agregado",
+            visible_text,
+        )
         model_metric = next(
             item for item in app.metric if item.label == "Modelo realmente usado"
         )
         self.assertEqual(model_metric.value, "lag-12")
+
+    def test_araba_rerun_names_territory_in_validation_performance(self) -> None:
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(app_path, default_timeout=120).run()
+
+        app.selectbox[0].select("Araba/Álava").run(timeout=120)
+
+        self.assertEqual(list(app.exception), [])
+        visible_text = " ".join(
+            str(item.value)
+            for kind in ("caption", "markdown", "metric")
+            for item in app.get(kind)
+        )
+        self.assertIn(
+            "Rendimiento en validación · Araba/Álava",
+            visible_text,
+        )
+        self.assertIn(
+            "validación temporal de Araba/Álava, no sobre el conjunto "
+            "agregado",
+            visible_text,
+        )
 
     def test_interval_unavailable_copy_does_not_block_point(self) -> None:
         script = dedent(
@@ -607,7 +749,11 @@ class TestStreamlitControlledStates(unittest.TestCase):
         self.assertEqual(list(app.exception), [])
         self.assertIn(
             "contexto histórico insuficiente",
-            " ".join(item.value for item in app.markdown).casefold(),
+            " ".join(
+                item.value
+                for kind in ("markdown", "caption")
+                for item in app.get(kind)
+            ).casefold(),
         )
         self.assertTrue(
             any("suficiente histórico" in item.value for item in app.warning)
